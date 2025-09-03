@@ -18,7 +18,7 @@ export async function POST(request: Request) {
         {
           role: "system",
           content:
-            "You are an expert at extracting text from receipts. Extract the full text content with high fidelity. Respond only with the extracted text, without any additional comments, introductions, or explanations.",
+            "You are an expert at extracting text from receipts. Extract the full text content with high fidelity, preserving the original line breaks and formatting as much as possible. Respond only with the extracted text, without any additional comments, introductions, or explanations.",
         },
         {
           role: "user",
