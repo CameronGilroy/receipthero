@@ -1,21 +1,34 @@
 "use client";
 
 import type React from "react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
-  processReceiptImages,
   type ProcessedReceipt,
   type SpendingBreakdown,
-} from "@/lib/mock-receipt-processor";
+} from "@/lib/types";
+import { useReceiptStorage } from "@/lib/useLocalStorage";
 
 import UploadReceiptPage from "@/app/components/UploadReceiptPage";
 import ResultsPage from "@/app/components/ResultsPage";
 
 export default function HomePage() {
-  const [processedReceipts, setProcessedReceipts] = useState<ProcessedReceipt[]>([]);
-  const [spendingBreakdown, setSpendingBreakdown] = useState<SpendingBreakdown | null>(null);
+  const {
+    processedReceipts,
+    spendingBreakdown,
+    base64s,
+    isLoaded,
+    updateReceipts,
+    clearStorage
+  } = useReceiptStorage();
   const [isProcessing, setIsProcessing] = useState(false);
   const [showResults, setShowResults] = useState(false);
+
+  // Show results if data was loaded from localStorage
+  useEffect(() => {
+    if (isLoaded && processedReceipts.length > 0 && spendingBreakdown) {
+      setShowResults(true);
+    }
+  }, [isLoaded, processedReceipts.length, spendingBreakdown]);
 
   const recalculateBreakdown = (receipts: ProcessedReceipt[]): SpendingBreakdown => {
     const categoryTotals = receipts.reduce((acc, receipt) => {
@@ -59,15 +72,7 @@ export default function HomePage() {
 
       const breakdown = recalculateBreakdown(enrichedReceipts);
 
-      // Store in localStorage
-      localStorage.setItem('receipts', JSON.stringify({
-        base64s,
-        receipts: enrichedReceipts,
-        breakdown
-      }));
-
-      setProcessedReceipts(enrichedReceipts);
-      setSpendingBreakdown(breakdown);
+      updateReceipts(enrichedReceipts, breakdown, base64s);
       setShowResults(true);
     } catch (error) {
       console.error("Processing failed:", error);
@@ -89,11 +94,55 @@ export default function HomePage() {
       setIsProcessing(true);
 
       try {
-        const results = await processReceiptImages(Array.from(files));
-        const updatedReceipts = [...processedReceipts, ...results.receipts];
+        // Process files using real OCR API
+        const fileArray = Array.from(files);
+        const newReceipts: ProcessedReceipt[] = [];
+        const newBase64s: string[] = [];
 
-        setProcessedReceipts(updatedReceipts);
-        setSpendingBreakdown(recalculateBreakdown(updatedReceipts));
+        for (const file of fileArray) {
+          try {
+            // Convert file to base64
+            const base64 = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => {
+                const result = reader.result as string;
+                const base64Data = result.split(',')[1];
+                resolve(base64Data);
+              };
+              reader.onerror = reject;
+              reader.readAsDataURL(file);
+            });
+
+            newBase64s.push(base64);
+
+            // Call OCR API
+            const response = await fetch('/api/ocr', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ base64Image: base64 }),
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.receipts) {
+              // Enrich receipts with additional fields
+              const enrichedReceipts = data.receipts.map((receipt: ProcessedReceipt) => ({
+                ...receipt,
+                id: receipt.id || Math.random().toString(36).substring(2, 11),
+                fileName: receipt.fileName || file.name,
+                thumbnail: receipt.thumbnail || `data:image/jpeg;base64,${base64}`,
+              }));
+              newReceipts.push(...enrichedReceipts);
+            }
+          } catch (error) {
+            console.error('Error processing file:', error);
+          }
+        }
+
+        const updatedReceipts = [...processedReceipts, ...newReceipts];
+        const updatedBase64s = [...base64s, ...newBase64s];
+
+        updateReceipts(updatedReceipts, recalculateBreakdown(updatedReceipts), updatedBase64s);
       } catch (error) {
         console.error("Processing failed:", error);
       } finally {
@@ -108,19 +157,17 @@ export default function HomePage() {
     const updatedReceipts = processedReceipts.filter(
       (receipt) => receipt.id !== receiptId
     );
-    setProcessedReceipts(updatedReceipts);
 
     if (updatedReceipts.length === 0) {
+      updateReceipts([], null, []);
       setShowResults(false);
-      setSpendingBreakdown(null);
     } else {
-      setSpendingBreakdown(recalculateBreakdown(updatedReceipts));
+      updateReceipts(updatedReceipts, recalculateBreakdown(updatedReceipts), base64s);
     }
   };
 
   const handleStartOver = () => {
-    setProcessedReceipts([]);
-    setSpendingBreakdown(null);
+    clearStorage();
     setShowResults(false);
   };
 

@@ -6,7 +6,7 @@ import { Upload, Trash2, Star } from "lucide-react";
 import type {
   ProcessedReceipt,
   SpendingBreakdown,
-} from "@/lib/mock-receipt-processor";
+} from "@/lib/types";
 
 interface ResultsPageProps {
   processedReceipts: ProcessedReceipt[];
