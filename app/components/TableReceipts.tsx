@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { Button } from "@/ui/button";
-import { Card } from "@/ui/card";
 import { Trash2 } from "lucide-react";
 import type { ProcessedReceipt } from "@/lib/types";
 import { formatDisplayDate, toTitleCase } from "@/lib/utils";
@@ -167,7 +166,10 @@ export default function TableReceipts({
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => onDeleteReceipt(receipt.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDeleteReceipt(receipt.id);
+                        }}
                         className="text-destructive hover:text-destructive"
                       >
                         <Trash2 className="h-4 w-4" />
