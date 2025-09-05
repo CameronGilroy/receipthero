@@ -28,8 +28,20 @@ export default function TableReceipts({
 }: TableReceiptsProps) {
   const [selectedReceipt, setSelectedReceipt] = useState<ProcessedReceipt | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc'); // Default to newest first
 
   const totalSpending = calculateTotals(processedReceipts);
+
+  // Sort receipts by date
+  const sortedReceipts = [...processedReceipts].sort((a, b) => {
+    const dateA = new Date(a.date).getTime();
+    const dateB = new Date(b.date).getTime();
+    return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
+  });
+
+  const handleDateSort = () => {
+    setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+  };
 
   const handleRowClick = (receipt: ProcessedReceipt) => {
     setSelectedReceipt(receipt);
@@ -122,9 +134,21 @@ export default function TableReceipts({
           <table className="w-full min-w-[800px]">
             <thead className="border-b bg-muted/50">
               <tr>
+                <th className="p-4 font-medium text-sm text-left text-[#99a1af]">
+                  Receipt
+                </th>
+                <th
+                  className="p-4 font-medium text-sm text-left text-[#99a1af] cursor-pointer hover:text-[#6a7282] select-none"
+                  onClick={handleDateSort}
+                >
+                  <div className="flex items-center gap-1">
+                    Date
+                    <span className="text-xs">
+                      {sortOrder === 'asc' ? '↑' : '↓'}
+                    </span>
+                  </div>
+                </th>
                 {[
-                  "Receipt",
-                  "Date",
                   "Vendor",
                   "Category",
                   "Payment Method",
@@ -142,7 +166,7 @@ export default function TableReceipts({
               </tr>
             </thead>
             <tbody>
-              {processedReceipts.map((receipt) => (
+              {sortedReceipts.map((receipt) => (
                 <tr
                   key={receipt.id}
                   className="border-b hover:bg-muted/25 text-base text-left text-[#1e2939] cursor-pointer"
