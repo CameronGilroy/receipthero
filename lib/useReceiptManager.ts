@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ProcessedReceipt, StoredReceipt, SpendingBreakdown, UploadedFile, FileStatus } from './types';
 import { normalizeDate } from './utils';
-import { getUSDConversionRate } from './currency';
+import { getMultipleUSDConversionRates } from './currency';
 
 interface StoredData {
   receipts: StoredReceipt[];
@@ -176,6 +176,7 @@ export function useReceiptManager() {
 
   // Process files through OCR API (parallel processing)
   const processFiles = useCallback(async (files: File[]): Promise<UploadedFile[]> => {
+    // First, process all files to get OCR data
     const filePromises = files.map(async (file) => {
       try {
         const { base64, mimeType } = await readFileAsBase64(file);
@@ -197,64 +198,29 @@ export function useReceiptManager() {
           const fullImageBase64 = `data:${mimeType};base64,${base64}`;
           const thumbnail = await createThumbnail(fullImageBase64);
 
-          // Convert amounts to USD if currency is not USD
-           let convertedAmount = receipt.amount;
-           let convertedTaxAmount = receipt.taxAmount;
-           let originalAmount = receipt.amount;
-           let originalTaxAmount = receipt.taxAmount;
-           let exchangeRate: number | undefined;
-           const currency = (receipt.currency || 'USD').toUpperCase();
-
-           console.log(`Processing receipt: ${receipt.amount} ${currency} from ${receipt.vendor}`);
-
-           if (currency !== 'USD') {
-             try {
-               const conversionRate = await getUSDConversionRate(currency);
-               if (conversionRate && conversionRate > 0) {
-                 convertedAmount = receipt.amount / conversionRate;
-                 convertedTaxAmount = receipt.taxAmount / conversionRate;
-                 exchangeRate = conversionRate;
-                 console.log(`✅ Converted ${receipt.amount} ${currency} to ${convertedAmount.toFixed(2)} USD (rate: ${conversionRate})`);
-               } else {
-                 console.warn(`❌ Invalid conversion rate for ${currency}:`, conversionRate);
-               }
-             } catch (error) {
-               console.error('❌ Failed to convert currency:', error);
-               // Keep original amounts if conversion fails
-             }
-           } else {
-             console.log(`ℹ️  Currency is already USD, no conversion needed`);
-           }
-
-          const processedReceipt: ProcessedReceipt = {
-             ...receipt,
-             id: receiptId,
-             fileName: receipt.fileName || file.name,
-             date: normalizeDate(receipt.date), // Normalize date format
-             amount: convertedAmount,
-             taxAmount: convertedTaxAmount,
-             currency: currency.toUpperCase(),
-             originalAmount: currency !== 'USD' ? originalAmount : undefined,
-             originalTaxAmount: currency !== 'USD' ? originalTaxAmount : undefined,
-             exchangeRate: currency !== 'USD' ? exchangeRate : undefined,
-             thumbnail,
-             base64: '', // Don't store full image to save space
-             mimeType,
-           };
-
           return {
-            id: fileId, // Use content-based ID
+            id: fileId,
             name: file.name,
             file,
             status: 'receipt' as FileStatus,
-            receipt: processedReceipt,
+            receipt: {
+              ...receipt,
+              id: receiptId,
+              fileName: receipt.fileName || file.name,
+              date: normalizeDate(receipt.date),
+              currency: (receipt.currency || 'USD').toUpperCase(),
+              thumbnail,
+              base64: '', // Don't store full image to save space
+              mimeType,
+            },
             base64,
             mimeType,
+            rawReceipt: receipt, // Keep original for currency conversion
           };
         } else {
           // No receipt data found
           return {
-            id: fileId, // Use content-based ID
+            id: fileId,
             name: file.name,
             file,
             status: 'not-receipt' as FileStatus,
@@ -265,9 +231,9 @@ export function useReceiptManager() {
       } catch (error) {
         console.error('Error processing file:', error);
         const { base64 } = await readFileAsBase64(file);
-        const fileId = hashBase64(base64); // Use content-based ID
+        const fileId = hashBase64(base64);
         return {
-          id: fileId, // Use content-based ID
+          id: fileId,
           name: file.name,
           file,
           status: 'error' as FileStatus,
@@ -279,6 +245,53 @@ export function useReceiptManager() {
     });
 
     const results = await Promise.all(filePromises);
+
+    // Now batch convert currencies for all successful receipts
+    const receiptsToConvert = results
+      .filter(r => r.status === 'receipt' && r.receipt)
+      .map(r => r.receipt!)
+      .filter(receipt => receipt.currency !== 'USD');
+
+    if (receiptsToConvert.length > 0) {
+      try {
+        // Get unique currencies
+        const currencies = [...new Set(receiptsToConvert.map(r => r.currency))];
+        const conversionRates = await getMultipleUSDConversionRates(currencies);
+
+        // Apply conversions
+        for (const result of results) {
+          if (result.status === 'receipt' && result.receipt) {
+            const receipt = result.receipt;
+            const currency = receipt.currency;
+
+            if (currency !== 'USD' && conversionRates[currency]) {
+              const conversionRate = conversionRates[currency];
+              const originalAmount = result.rawReceipt?.amount || receipt.amount;
+              const originalTaxAmount = result.rawReceipt?.taxAmount || receipt.taxAmount;
+
+              receipt.amount = originalAmount / conversionRate;
+              receipt.taxAmount = originalTaxAmount / conversionRate;
+              receipt.originalAmount = originalAmount;
+              receipt.originalTaxAmount = originalTaxAmount;
+              receipt.exchangeRate = conversionRate;
+
+              console.log(`✅ Converted ${originalAmount} ${currency} to ${receipt.amount.toFixed(2)} USD (rate: ${conversionRate})`);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('❌ Failed to convert currencies:', error);
+        // Keep original amounts if conversion fails
+      }
+    }
+
+    // Clean up rawReceipt data
+    for (const result of results) {
+      if (result.rawReceipt) {
+        delete result.rawReceipt;
+      }
+    }
+
     return results;
   }, []);
 

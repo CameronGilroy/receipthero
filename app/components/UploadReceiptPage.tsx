@@ -4,17 +4,19 @@ import type React from "react";
 import { useState, useEffect, useRef } from "react";
 import { useDropzone } from "react-dropzone";
 import { UploadedFile } from "@/lib/types";
-import { normalizeDate } from "@/lib/utils";
+
 import Header from "./Header";
 import Footer from "./Footer";
 import { Tooltip } from "@/ui/tooltip";
 
 interface UploadReceiptPageProps {
   onProcessFiles: (uploadedFiles: UploadedFile[]) => void;
+  processFiles: (files: File[]) => Promise<UploadedFile[]>;
 }
 
 export default function UploadReceiptPage({
   onProcessFiles,
+  processFiles,
 }: UploadReceiptPageProps) {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const autoRedirectTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -104,120 +106,55 @@ export default function UploadReceiptPage({
     },
   });
 
-  // Simple hash function for file content
-  const hashFileContent = (base64: string): string => {
-    let hash = 0;
-    for (let i = 0; i < base64.length; i++) {
-      const char = base64.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32-bit integer
-    }
-    return Math.abs(hash).toString(36);
-  };
+
 
   const handleFileUpload = async (files: File[]) => {
     const existingNames = new Set(uploadedFiles.map(f => f.name));
     const uniqueFiles = files.filter(file => !existingNames.has(file.name));
 
-    const newFiles: UploadedFile[] = await Promise.all(uniqueFiles.map(async (file) => {
-      // Generate content-based ID from file content
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const result = reader.result as string;
-          const base64Data = result.split(',')[1];
-          resolve(base64Data);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-      const fileId = hashFileContent(base64);
-
-      return {
-        id: fileId,
-        name: file.name,
-        file,
-        status: 'processing' as const,
-      };
+    const newFiles: UploadedFile[] = uniqueFiles.map((file) => ({
+      id: `temp-${Date.now()}-${Math.random()}`, // Temporary ID
+      name: file.name,
+      file,
+      status: 'processing' as const,
     }));
 
     setUploadedFiles((prev) => [...prev, ...newFiles]);
 
-    // Process all files in parallel
-    const processFilePromises = newFiles.map(async (uploadedFile) => {
-      try {
-        // Convert file to base64
-        const base64 = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => {
-            const result = reader.result as string;
-            const base64Data = result.split(',')[1];
-            resolve(base64Data);
-          };
-          reader.onerror = reject;
-          reader.readAsDataURL(uploadedFile.file);
-        });
+    // Use the receipt manager's processFiles function
+    try {
+      const processedFiles = await processFiles(uniqueFiles);
 
-        // Call OCR API
-        const response = await fetch('/api/ocr', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ base64Image: base64 }),
-        });
+      // Update all files at once with their processed results
+      setUploadedFiles((prev) =>
+        prev.map((file) => {
+          // Match by file name since we don't have content-based IDs yet
+          const result = processedFiles.find((r) => r.name === file.name);
+          if (result) {
+            return { ...file, ...result };
+          }
+          return file;
+        })
+      );
 
-        const data = await response.json();
-
-        if (response.ok && data.receipts && data.receipts.length > 0) {
-          const receipt = data.receipts[0]; // Take first receipt if multiple
-          const processedReceipt = {
-            ...receipt,
-            id: uploadedFile.id,
-            fileName: uploadedFile.name,
-            date: normalizeDate(receipt.date), // Normalize date format
-            thumbnail: `data:image/jpeg;base64,${base64}`,
-            base64,
-            mimeType: uploadedFile.file.type,
-          };
-
-          return {
-            id: uploadedFile.id,
-            status: 'receipt' as const,
-            receipt: processedReceipt,
-            base64,
-            mimeType: uploadedFile.file.type,
-          };
-        } else {
-          // No receipt data found
-          return {
-            id: uploadedFile.id,
-            status: 'not-receipt' as const,
-            base64,
-            mimeType: uploadedFile.file.type,
-          };
-        }
-      } catch (error) {
-        console.error('Error processing file:', error);
-        return {
-          id: uploadedFile.id,
-          status: 'error' as const,
-          error: error instanceof Error ? error.message : 'Processing failed',
-        };
-      }
-    });
-
-    // Wait for all files to be processed in parallel
-    const processedResults = await Promise.all(processFilePromises);
-
-    // Update all files at once with their processed results
-    setUploadedFiles((prev) =>
-      prev.map((file) => {
-        const result = processedResults.find((r) => r.id === file.id);
-        if (result) {
-          return { ...file, ...result };
-        }
-        return file;
-      })
-    );
+      // Call the parent's onProcessFiles callback with the processed results
+      onProcessFiles(processedFiles);
+    } catch (error) {
+      console.error('Error processing files:', error);
+      // Mark all files as error
+      setUploadedFiles((prev) =>
+        prev.map((file) => {
+          if (newFiles.some(newFile => newFile.name === file.name)) {
+            return {
+              ...file,
+              status: 'error' as const,
+              error: error instanceof Error ? error.message : 'Processing failed',
+            };
+          }
+          return file;
+        })
+      );
+    }
   };
 
   const removeFile = (id: string) => {

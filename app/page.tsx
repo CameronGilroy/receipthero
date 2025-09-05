@@ -109,6 +109,7 @@ export default function HomePage() {
   return (
     <UploadReceiptPage
       onProcessFiles={handleProcessFiles}
+      processFiles={processFiles}
     />
   );
 }
