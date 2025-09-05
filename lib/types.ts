@@ -10,6 +10,10 @@ export const ProcessedReceiptSchema = z.object({
   paymentMethod: z.string(),
   taxAmount: z.number(),
   amount: z.number(),
+  currency: z.string().default('USD'),
+  originalAmount: z.number().optional(),
+  originalTaxAmount: z.number().optional(),
+  exchangeRate: z.number().optional(),
   thumbnail: z.string(),
   base64: z.string(),
   mimeType: z.string(),
@@ -28,6 +32,10 @@ export interface StoredReceipt {
   paymentMethod: string;
   taxAmount: number;
   amount: number;
+  currency?: string;
+  originalAmount?: number;
+  originalTaxAmount?: number;
+  exchangeRate?: number;
   mimeType: string;
 }
 

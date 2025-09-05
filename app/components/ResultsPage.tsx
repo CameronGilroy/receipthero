@@ -23,7 +23,7 @@ export default function ResultsPage({
 }: ResultsPageProps) {
   return (
     <div className="min-h-screen bg-gray-100">
-      <div className="flex">
+      <div className="flex flex-col md:flex-row">
         <SidebarReceipts
           processedReceipts={processedReceipts}
           spendingBreakdown={spendingBreakdown}

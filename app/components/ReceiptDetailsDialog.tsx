@@ -51,13 +51,33 @@ export default function ReceiptDetailsDialog({
 
             {/* Details List */}
             <div className="flex flex-col gap-0">
-              {/* Amount */}
-              <div className="flex justify-between items-center py-3 border-b border-gray-200">
-                <span className="text-sm text-[#6a7282]">Amount</span>
-                <span className="text-base font-medium text-[#1e2939]">
-                  ${receipt.amount.toFixed(2)}
-                </span>
-              </div>
+               {/* Amount */}
+                <div className="flex flex-col gap-2 py-3 border-b border-gray-200">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-[#6a7282]">Amount</span>
+                    <span className="text-base font-medium text-[#1e2939]">
+                      ${receipt.amount.toFixed(2)} USD
+                    </span>
+                  </div>
+                  {receipt.originalAmount && receipt.currency && receipt.currency !== 'USD' && (
+                    <>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-[#6a7282]">Original Amount</span>
+                        <span className="text-sm text-[#6a7282]">
+                          {receipt.originalAmount.toFixed(2)} {receipt.currency}
+                        </span>
+                      </div>
+                      {receipt.exchangeRate && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm text-[#6a7282]">Exchange Rate</span>
+                          <span className="text-sm text-[#6a7282]">
+                            1 {receipt.currency} = {(1 / receipt.exchangeRate).toFixed(4)} USD
+                          </span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
 
               {/* Category */}
               <div className="flex justify-between items-center py-3 border-b border-gray-200">
@@ -75,13 +95,23 @@ export default function ReceiptDetailsDialog({
                 </span>
               </div>
 
-              {/* Tax Amount */}
-              <div className="flex justify-between items-center py-3 border-b border-gray-200">
-                <span className="text-sm text-[#6a7282]">Tax Amount</span>
-                <span className="text-base font-medium text-[#1e2939]">
-                  ${receipt.taxAmount.toFixed(2)}
-                </span>
-              </div>
+               {/* Tax Amount */}
+               <div className="flex flex-col gap-2 py-3 border-b border-gray-200">
+                 <div className="flex justify-between items-center">
+                   <span className="text-sm text-[#6a7282]">Tax Amount</span>
+                   <span className="text-base font-medium text-[#1e2939]">
+                     ${receipt.taxAmount.toFixed(2)} USD
+                   </span>
+                 </div>
+                 {receipt.originalTaxAmount && receipt.currency && receipt.currency !== 'USD' && (
+                   <div className="flex justify-between items-center">
+                     <span className="text-sm text-[#6a7282]">Original Tax</span>
+                     <span className="text-sm text-[#6a7282]">
+                       {receipt.originalTaxAmount.toFixed(2)} {receipt.currency}
+                     </span>
+                   </div>
+                 )}
+               </div>
             </div>
 
             {/* Footer with Delete Button */}

@@ -183,8 +183,8 @@ export default function TableReceipts({
                   <td className="p-4">{receipt.vendor}</td>
                   <td className="p-4">{toTitleCase(receipt.category)}</td>
                   <td className="p-4">{toTitleCase(receipt.paymentMethod)}</td>
-                  <td className="p-4">${receipt.taxAmount}</td>
-                  <td className="p-4 font-semibold">${receipt.amount}</td>
+                   <td className="p-4">${receipt.taxAmount.toFixed(2)}</td>
+                   <td className="p-4 font-semibold">${receipt.amount.toFixed(2)}</td>
                   <td className="p-4">
                     <div className="flex items-center gap-2">
                       <Button

@@ -31,6 +31,13 @@ CRITICAL FORMATTING REQUIREMENTS:
 - Convert any date format to YYYY-MM-DD
 - If date is ambiguous, use the most recent logical date
 
+CURRENCY EXTRACTION:
+- ALWAYS include a currency field in the response
+- Extract the currency code (e.g., "USD", "EUR", "AED", "GBP", "CAD", etc.) from currency symbols or explicit mentions
+- Common currency symbols: $ = USD, € = EUR, £ = GBP, AED = AED (or د.إ), etc.
+- If no currency symbol is visible on the receipt, use "USD" as the default
+- Currency field should be the 3-letter currency code (ISO 4217 format)
+
 CATEGORIZATION RULES:
 - Grocery stores (Walmart, Target, Kroger, Safeway, Whole Foods, Trader Joe's, Costco, Sam's Club, Aldi, Publix, Wegmans): "groceries"
 - Restaurants/Fast food (McDonald's, Starbucks, Chipotle, Taco Bell, Subway, etc.): "dining"
@@ -57,7 +64,10 @@ Extract all visible receipt data accurately. If information is not visible, use 
               type: "text",
               text: "Extract receipt data from this image following the formatting and categorization rules.",
             },
-            { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64Image}` } },
+            {
+              type: "image_url",
+              image_url: { url: `data:image/jpeg;base64,${base64Image}` },
+            },
           ],
         },
       ],
@@ -85,6 +95,8 @@ Extract all visible receipt data accurately. If information is not visible, use 
 
     const validated = receiptSchema.safeParse(parsedJson);
     if (!validated.success) {
+      console.error("OCR validation failed:", validated.error.message);
+      console.error("Raw response:", parsedJson);
       return NextResponse.json(
         { error: "Validation failed", details: validated.error.message },
         { status: 422 }
