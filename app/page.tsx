@@ -3,8 +3,8 @@
 import type React from "react";
 import { UploadedFile } from "@/lib/types";
 import { useReceiptManager } from "@/lib/useReceiptManager";
-import UploadReceiptPage from "@/app/components/UploadReceiptPage";
-import ResultsPage from "@/app/components/ResultsPage";
+import UploadReceiptPage from "@/components/UploadReceiptPage";
+import ResultsPage from "@/components/ResultsPage";
 import { useToast } from "@/ui/toast";
 
 export default function HomePage() {
@@ -29,8 +29,10 @@ export default function HomePage() {
     // Show toast message for duplicates
     if (result.duplicatesCount > 0) {
       addToast(
-        `${result.duplicatesCount} duplicate receipt${result.duplicatesCount > 1 ? 's' : ''} ${result.duplicatesCount > 1 ? 'were' : 'was'} skipped`,
-        'warning'
+        `${result.duplicatesCount} duplicate receipt${
+          result.duplicatesCount > 1 ? "s" : ""
+        } ${result.duplicatesCount > 1 ? "were" : "was"} skipped`,
+        "warning"
       );
     }
 
@@ -38,8 +40,10 @@ export default function HomePage() {
     const newReceiptsCount = result.receipts.length - receipts.length;
     if (newReceiptsCount > 0) {
       addToast(
-        `Successfully added ${newReceiptsCount} new receipt${newReceiptsCount > 1 ? 's' : ''}!`,
-        'success'
+        `Successfully added ${newReceiptsCount} new receipt${
+          newReceiptsCount > 1 ? "s" : ""
+        }!`,
+        "success"
       );
     }
   };
@@ -56,8 +60,10 @@ export default function HomePage() {
       // Show toast message for duplicates
       if (result.duplicatesCount > 0) {
         addToast(
-          `${result.duplicatesCount} duplicate receipt${result.duplicatesCount > 1 ? 's' : ''} ${result.duplicatesCount > 1 ? 'were' : 'was'} skipped`,
-          'warning'
+          `${result.duplicatesCount} duplicate receipt${
+            result.duplicatesCount > 1 ? "s" : ""
+          } ${result.duplicatesCount > 1 ? "were" : "was"} skipped`,
+          "warning"
         );
       }
 
@@ -65,8 +71,10 @@ export default function HomePage() {
       const newReceiptsCount = result.receipts.length - receipts.length;
       if (newReceiptsCount > 0) {
         addToast(
-          `Successfully added ${newReceiptsCount} new receipt${newReceiptsCount > 1 ? 's' : ''}!`,
-          'success'
+          `Successfully added ${newReceiptsCount} new receipt${
+            newReceiptsCount > 1 ? "s" : ""
+          }!`,
+          "success"
         );
       }
     }
