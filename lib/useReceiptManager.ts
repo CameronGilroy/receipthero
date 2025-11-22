@@ -6,8 +6,9 @@ import { useToast } from '@/ui/toast';
 import * as pdfjsLib from 'pdfjs-dist';
 
 // Configure PDF.js worker
+// Using CDN for worker file - falls back to bundled worker if unavailable
 if (typeof window !== 'undefined') {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 }
 
 interface StoredData {
@@ -16,41 +17,51 @@ interface StoredData {
 }
 
 const STORAGE_KEY = 'receipt-hero-data';
+const PDF_RENDER_SCALE = 2; // Scale factor for PDF rendering quality
 
 // Convert PDF first page to base64 image
 const convertPdfToImage = async (file: File): Promise<{ base64: string; mimeType: string }> => {
-  const arrayBuffer = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-  
-  // Get the first page
-  const page = await pdf.getPage(1);
-  
-  // Set scale for better quality
-  const scale = 2;
-  const viewport = page.getViewport({ scale });
-  
-  // Create canvas
-  const canvas = document.createElement('canvas');
-  const context = canvas.getContext('2d');
-  
-  if (!context) {
-    throw new Error('Could not get canvas context');
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    
+    // Check if PDF has pages
+    if (pdf.numPages === 0) {
+      throw new Error('PDF has no pages');
+    }
+    
+    // Get the first page
+    const page = await pdf.getPage(1);
+    
+    // Set scale for better quality
+    const viewport = page.getViewport({ scale: PDF_RENDER_SCALE });
+    
+    // Create canvas
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    
+    if (!context) {
+      throw new Error('Could not get canvas context');
+    }
+    
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    
+    // Render PDF page to canvas
+    await page.render({
+      canvasContext: context,
+      viewport: viewport,
+    }).promise;
+    
+    // Convert canvas to base64 JPEG
+    const imageDataUrl = canvas.toDataURL('image/jpeg', 0.95);
+    const [, base64] = imageDataUrl.split(',');
+    
+    return { base64, mimeType: 'image/jpeg' };
+  } catch (error) {
+    console.error('Error converting PDF to image:', error);
+    throw new Error(`Failed to process PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
-  
-  canvas.width = viewport.width;
-  canvas.height = viewport.height;
-  
-  // Render PDF page to canvas
-  await page.render({
-    canvasContext: context,
-    viewport: viewport,
-  }).promise;
-  
-  // Convert canvas to base64 JPEG
-  const imageDataUrl = canvas.toDataURL('image/jpeg', 0.95);
-  const [, base64] = imageDataUrl.split(',');
-  
-  return { base64, mimeType: 'image/jpeg' };
 };
 
 const readFileAsBase64 = async (file: File): Promise<{ base64: string; mimeType: string }> => {
