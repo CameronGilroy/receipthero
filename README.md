@@ -12,17 +12,19 @@
 - Next.js app router with Tailwind CSS
 - Together AI for LLM-powered OCR
 - Llama 4 Scout 17B for receipt data extraction
+- PDF.js for PDF rendering and conversion
 - shadcn/ui components with Radix UI
 - Zod for data validation
 
 ## How it works
 
-1. Upload receipt images via drag & drop or file selection
-2. Send images to Together AI's Llama model for OCR processing
-3. Extract structured data: vendor, date, amount, items, currency, payment method
-4. Automatically categorize expenses (groceries, dining, gas, etc.)
-5. Display spending breakdown and receipt management interface
-6. Store data locally in browser for privacy
+1. Upload receipt images or PDFs via drag & drop or file selection
+2. PDFs are automatically converted to images (first page only)
+3. Send images to Together AI's Llama model for OCR processing
+4. Extract structured data: vendor, date, amount, items, currency, payment method
+5. Automatically categorize expenses (groceries, dining, gas, etc.)
+6. Display spending breakdown and receipt management interface
+7. Store data locally in browser for privacy
 
 ## Cloning & running
 
