@@ -3,6 +3,12 @@ import { ProcessedReceipt, StoredReceipt, SpendingBreakdown, UploadedFile, FileS
 import { normalizeDate } from './utils';
 import { getMultipleUSDConversionRates } from './currency';
 import { useToast } from '@/ui/toast';
+import * as pdfjsLib from 'pdfjs-dist';
+
+// Configure PDF.js worker
+if (typeof window !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+}
 
 interface StoredData {
   receipts: StoredReceipt[];
@@ -11,7 +17,49 @@ interface StoredData {
 
 const STORAGE_KEY = 'receipt-hero-data';
 
-const readFileAsBase64 = (file: File): Promise<{ base64: string; mimeType: string }> => {
+// Convert PDF first page to base64 image
+const convertPdfToImage = async (file: File): Promise<{ base64: string; mimeType: string }> => {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  
+  // Get the first page
+  const page = await pdf.getPage(1);
+  
+  // Set scale for better quality
+  const scale = 2;
+  const viewport = page.getViewport({ scale });
+  
+  // Create canvas
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d');
+  
+  if (!context) {
+    throw new Error('Could not get canvas context');
+  }
+  
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  
+  // Render PDF page to canvas
+  await page.render({
+    canvasContext: context,
+    viewport: viewport,
+  }).promise;
+  
+  // Convert canvas to base64 JPEG
+  const imageDataUrl = canvas.toDataURL('image/jpeg', 0.95);
+  const [, base64] = imageDataUrl.split(',');
+  
+  return { base64, mimeType: 'image/jpeg' };
+};
+
+const readFileAsBase64 = async (file: File): Promise<{ base64: string; mimeType: string }> => {
+  // Handle PDF files separately
+  if (file.type === 'application/pdf') {
+    return convertPdfToImage(file);
+  }
+  
+  // Handle image files as before
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
@@ -399,7 +447,7 @@ export function useReceiptManager() {
       const input = document.createElement('input');
       input.type = 'file';
       input.multiple = true;
-      input.accept = 'image/*';
+      input.accept = 'image/*,application/pdf';
 
       input.onchange = (e) => {
         const files = (e.target as HTMLInputElement).files;
