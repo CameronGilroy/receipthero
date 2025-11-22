@@ -1,22 +1,27 @@
 import { NextResponse } from 'next/server';
-import { togetheraiClient } from '@/lib/client';
+import { openrouterClient } from '@/lib/client';
 import { z } from 'zod';
 import { ProcessedReceiptSchema } from '@/lib/types';
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL!,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
-});
-
 const dailyLimit = parseInt(process.env.DAILY_RECEIPT_LIMIT || '30', 10);
 
-const ratelimit = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(dailyLimit, '1 d'),
-  analytics: true,
-});
+// Only create ratelimit if Redis is configured
+let ratelimit: Ratelimit | null = null;
+
+if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
+  const redis = new Redis({
+    url: process.env.UPSTASH_REDIS_REST_URL!,
+    token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  });
+
+  ratelimit = new Ratelimit({
+    redis,
+    limiter: Ratelimit.slidingWindow(dailyLimit, '1 d'),
+    analytics: true,
+  });
+}
 
 export async function POST(request: Request) {
   try {
@@ -29,22 +34,24 @@ export async function POST(request: Request) {
       );
     }
 
-    // Rate limiting: configurable receipts per day per IP
-    const ip =
-      request.headers.get('x-forwarded-for')?.split(',')[0] ||
-      request.headers.get('x-real-ip') ||
-      'unknown';
-    const { success } = await ratelimit.limit(ip);
+    // Rate limiting: configurable receipts per day per IP (only if Redis is configured)
+    if (ratelimit) {
+      const ip =
+        request.headers.get('x-forwarded-for')?.split(',')[0] ||
+        request.headers.get('x-real-ip') ||
+        'unknown';
+      const { success } = await ratelimit.limit(ip);
 
-    if (!success) {
-      return NextResponse.json(
-        {
-          error: 'Rate limit exceeded',
-          details:
-            `You've reached the daily limit of ${dailyLimit} receipts. Contact @nutlope on X/Twitter for higher limits.`,
-        },
-        { status: 429 }
-      );
+      if (!success) {
+        return NextResponse.json(
+          {
+            error: 'Rate limit exceeded',
+            details:
+              `You've reached the daily limit of ${dailyLimit} receipts. Contact @nutlope on X/Twitter for higher limits.`,
+          },
+          { status: 429 }
+        );
+      }
     }
 
     const receiptSchema = z.object({
@@ -52,8 +59,9 @@ export async function POST(request: Request) {
     });
     const jsonSchema = z.toJSONSchema(receiptSchema);
 
-    const response = await togetheraiClient.chat.completions.create({
-      model: 'meta-llama/Llama-4-Scout-17B-16E-Instruct',
+    const response = await openrouterClient.chat.send({
+      model: 'meta-llama/llama-3.2-90b-vision-instruct',
+      stream: false,
       messages: [
         {
           role: 'system',
@@ -63,6 +71,26 @@ CRITICAL FORMATTING REQUIREMENTS:
 - Date MUST be in YYYY-MM-DD format (e.g., "2024-01-15", not "01/15/2024" or "Jan 15, 2024")
 - Convert any date format to YYYY-MM-DD
 - If date is ambiguous, use the most recent logical date
+
+REQUIRED JSON STRUCTURE:
+{
+  "receipts": [
+    {
+      "id": "string (generate unique ID)",
+      "fileName": "string (use 'receipt' as default)",
+      "date": "string (YYYY-MM-DD format)",
+      "vendor": "string (store/business name)",
+      "category": "string (see categorization rules below)",
+      "paymentMethod": "string (cash/credit/debit/etc)",
+      "taxAmount": "number (tax amount as decimal)",
+      "amount": "number (total amount as decimal)",
+      "currency": "string (3-letter currency code)",
+      "thumbnail": "string (empty string)",
+      "base64": "string (empty string)",
+      "mimeType": "string (image/jpeg or image/png)"
+    }
+  ]
+}
 
 CURRENCY EXTRACTION:
 - ALWAYS include a currency field in the response
@@ -88,7 +116,7 @@ CATEGORIZATION RULES:
 
 PAYMENT METHODS: Common values include "cash", "credit", "debit", "check", "gift card", "digital wallet"
 
-Extract all visible receipt data accurately. If information is not visible, use reasonable defaults or omit if not applicable. Respond only with valid JSON.`,
+Extract all visible receipt data accurately. If information is not visible, use reasonable defaults or omit if not applicable. Respond only with valid JSON matching the exact structure above.`,
         },
         {
           role: 'user',
@@ -99,19 +127,19 @@ Extract all visible receipt data accurately. If information is not visible, use 
             },
             {
               type: 'image_url',
-              image_url: { url: `data:image/jpeg;base64,${base64Image}` },
+              imageUrl: { url: `data:image/jpeg;base64,${base64Image}` },
             },
           ],
         },
       ],
-      response_format: { type: 'json_object', schema: jsonSchema },
+      responseFormat: { type: 'json_object' },
     });
 
     const content = response?.choices?.[0]?.message?.content;
 
-    if (!content) {
+    if (!content || typeof content !== 'string') {
       return NextResponse.json(
-        { error: 'OCR extraction failed: empty response' },
+        { error: 'OCR extraction failed: empty or invalid response' },
         { status: 502 }
       );
     }

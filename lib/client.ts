@@ -1,17 +1,16 @@
-import { Together } from "together-ai";
+import { OpenRouter } from '@openrouter/sdk';
 
-const APP_NAME_HELICONE = "receipthero";
+// Create OpenRouter client using the official SDK
+const createOpenRouterClient = () => {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  
+  if (!apiKey) {
+    throw new Error('OPENROUTER_API_KEY environment variable is required');
+  }
 
-const baseSDKOptions: ConstructorParameters<typeof Together>[0] = {
-  apiKey: process.env.TOGETHER_API_KEY,
+  return new OpenRouter({
+    apiKey: apiKey,
+  });
 };
 
-if (process.env.HELICONE_API_KEY) {
-  baseSDKOptions.baseURL = "https://together.helicone.ai/v1";
-  baseSDKOptions.defaultHeaders = {
-    "Helicone-Auth": `Bearer ${process.env.HELICONE_API_KEY}`,
-    "Helicone-Property-Appname": APP_NAME_HELICONE,
-  };
-}
-
-export const togetheraiClient = new Together(baseSDKOptions);
+export const openrouterClient = createOpenRouterClient();

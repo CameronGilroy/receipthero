@@ -3,12 +3,17 @@ import { ProcessedReceipt, StoredReceipt, SpendingBreakdown, UploadedFile, FileS
 import { normalizeDate } from './utils';
 import { getMultipleUSDConversionRates } from './currency';
 import { useToast } from '@/ui/toast';
-import * as pdfjsLib from 'pdfjs-dist';
 
-// Configure PDF.js worker
-// Using local worker file from public directory for security
-if (typeof window !== 'undefined') {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+// Dynamic PDF.js import to prevent SSR issues
+let pdfjsLib: typeof import('pdfjs-dist') | null = null;
+
+// Configure PDF.js worker (only on client side)
+async function initializePdfJs() {
+  if (typeof window !== 'undefined' && !pdfjsLib) {
+    pdfjsLib = await import('pdfjs-dist');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+  }
+  return pdfjsLib;
 }
 
 interface StoredData {
@@ -22,6 +27,11 @@ const PDF_RENDER_SCALE = 2; // Scale factor for PDF rendering quality
 // Convert PDF first page to base64 image
 const convertPdfToImage = async (file: File): Promise<{ base64: string; mimeType: string }> => {
   try {
+    const pdfjsLib = await initializePdfJs();
+    if (!pdfjsLib) {
+      throw new Error('PDF.js could not be loaded');
+    }
+    
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     
@@ -54,6 +64,7 @@ const convertPdfToImage = async (file: File): Promise<{ base64: string; mimeType
     await page.render({
       canvasContext: context,
       viewport: viewport,
+      canvas: canvas,
     }).promise;
     
     // Convert canvas to base64 JPEG
@@ -133,6 +144,11 @@ const createThumbnail = (base64: string, maxWidth: number = 335, maxHeight: numb
 
 // Convert PDF to images (one per page)
 const convertPdfToImages = async (file: File): Promise<{ base64: string; mimeType: string }[]> => {
+  const pdfjsLib = await initializePdfJs();
+  if (!pdfjsLib) {
+    throw new Error('PDF.js could not be loaded');
+  }
+  
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
   const images: { base64: string; mimeType: string }[] = [];
