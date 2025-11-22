@@ -18,11 +18,13 @@
 ## How it works
 
 1. Upload receipt images via drag & drop or file selection
-2. Send images to Together AI's Llama model for OCR processing
+2. **Delegate to cloud agent**: Send images to Together AI's Llama model for OCR processing
 3. Extract structured data: vendor, date, amount, items, currency, payment method
 4. Automatically categorize expenses (groceries, dining, gas, etc.)
 5. Display spending breakdown and receipt management interface
 6. Store data locally in browser for privacy
+
+> **Note**: ReceiptHero uses a cloud agent pattern for scalable AI processing. See [Cloud Agent Architecture](./docs/CLOUD_AGENT_ARCHITECTURE.md) for details.
 
 ## Cloning & running
 

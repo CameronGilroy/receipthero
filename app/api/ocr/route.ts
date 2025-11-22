@@ -1,3 +1,15 @@
+/**
+ * Cloud Agent OCR Endpoint
+ * 
+ * This endpoint acts as a delegation point to the cloud-based AI agent
+ * (Together AI with Llama 4 Scout 17B) for receipt OCR processing.
+ * 
+ * The cloud agent pattern provides:
+ * - Scalable AI processing without client-side ML models
+ * - Server-side rate limiting and security
+ * - Centralized monitoring and error handling
+ */
+
 import { NextResponse } from 'next/server';
 import { togetheraiClient } from '@/lib/client';
 import { z } from 'zod';

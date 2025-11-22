@@ -1,0 +1,67 @@
+/**
+ * Cloud Agent Abstraction
+ * 
+ * This module provides an abstraction for delegating OCR processing
+ * to cloud-based AI agents (currently Together AI with Llama 4 Scout).
+ * 
+ * The cloud agent pattern allows for:
+ * - Scalable OCR processing without client-side ML models
+ * - Centralized rate limiting and monitoring
+ * - Easy swapping of AI providers
+ */
+
+import { ProcessedReceipt } from './types';
+
+export interface CloudAgentResponse {
+  receipts: ProcessedReceipt[];
+}
+
+/**
+ * Custom error class for cloud agent errors
+ */
+export class CloudAgentError extends Error {
+  constructor(
+    message: string,
+    public statusCode?: number,
+    public details?: string
+  ) {
+    super(message);
+    this.name = 'CloudAgentError';
+  }
+}
+
+/**
+ * Delegates receipt OCR processing to the cloud agent
+ * 
+ * @param base64Image - Base64 encoded image data
+ * @returns Processed receipt data from the cloud agent
+ * @throws CloudAgentError if cloud agent processing fails
+ */
+export async function delegateToCloudAgent(
+  base64Image: string
+): Promise<CloudAgentResponse> {
+  const response = await fetch('/api/ocr', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ base64Image }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new CloudAgentError(
+      data.error || 'Cloud agent processing failed',
+      response.status,
+      data.details
+    );
+  }
+
+  return data as CloudAgentResponse;
+}
+
+/**
+ * Check if an error is a rate limit error from the cloud agent
+ */
+export function isRateLimitError(error: unknown): boolean {
+  return error instanceof CloudAgentError && error.statusCode === 429;
+}
