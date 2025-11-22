@@ -106,6 +106,7 @@ export default function UploadReceiptPage({
       "image/jpeg": [],
       "image/jpg": [],
       "image/webp": [],
+      "application/pdf": [],
     },
   });
 

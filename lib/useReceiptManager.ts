@@ -3,6 +3,12 @@ import { ProcessedReceipt, StoredReceipt, SpendingBreakdown, UploadedFile, FileS
 import { normalizeDate } from './utils';
 import { getMultipleUSDConversionRates } from './currency';
 import { useToast } from '@/ui/toast';
+import * as pdfjsLib from 'pdfjs-dist';
+
+// Set up PDF.js worker
+if (typeof window !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+}
 
 interface StoredData {
   receipts: StoredReceipt[];
@@ -67,6 +73,35 @@ const createThumbnail = (base64: string, maxWidth: number = 335, maxHeight: numb
     };
     img.src = base64;
   });
+};
+
+// Convert PDF to images (one per page)
+const convertPdfToImages = async (file: File): Promise<{ base64: string; mimeType: string }[]> => {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const images: { base64: string; mimeType: string }[] = [];
+
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+    const page = await pdf.getPage(pageNum);
+    const viewport = page.getViewport({ scale: 2.0 }); // Higher scale for better quality
+    
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d')!;
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+
+    await page.render({
+      canvasContext: context,
+      viewport: viewport,
+      canvas: canvas,
+    } as any).promise;
+
+    const base64 = canvas.toDataURL('image/jpeg', 0.95);
+    const base64Data = base64.split(',')[1];
+    images.push({ base64: base64Data, mimeType: 'image/jpeg' });
+  }
+
+  return images;
 };
 
 // Convert ProcessedReceipt to StoredReceipt (keep thumbnail, remove full base64)
@@ -178,84 +213,134 @@ export function useReceiptManager() {
 
   // Process files through OCR API (parallel processing)
   const processFiles = useCallback(async (files: File[]): Promise<UploadedFile[]> => {
-    // First, process all files to get OCR data
-    const filePromises = files.map(async (file) => {
-      try {
+    // First, expand PDFs into individual pages as separate files
+    const expandedFilePromises = files.map(async (file) => {
+      if (file.type === 'application/pdf') {
+        try {
+          const pdfImages = await convertPdfToImages(file);
+          return pdfImages.map((img, index) => ({
+            originalFile: file,
+            fileName: pdfImages.length > 1 ? `${file.name} (page ${index + 1})` : file.name,
+            base64: img.base64,
+            mimeType: img.mimeType,
+            isPdf: true,
+            error: undefined as string | undefined,
+          }));
+        } catch (error) {
+          console.error('Error converting PDF:', error);
+          return [{
+            originalFile: file,
+            fileName: file.name,
+            base64: '',
+            mimeType: file.type,
+            isPdf: true,
+            error: error instanceof Error ? error.message : 'PDF conversion failed',
+          }];
+        }
+      } else {
         const { base64, mimeType } = await readFileAsBase64(file);
-        const fileId = hashBase64(base64); // Use content-based ID
+        return [{
+          originalFile: file,
+          fileName: file.name,
+          base64,
+          mimeType,
+          isPdf: false,
+          error: undefined as string | undefined,
+        }];
+      }
+    });
+
+    const expandedFilesArrays = await Promise.all(expandedFilePromises);
+    const expandedFiles = expandedFilesArrays.flat();
+
+    // Process all files (including PDF pages) through OCR
+    const filePromises = expandedFiles.map(async (fileData) => {
+      try {
+        if (fileData.error) {
+          const fileId = `error-${Date.now()}-${Math.random()}`;
+          return {
+            id: fileId,
+            name: fileData.fileName,
+            file: fileData.originalFile,
+            status: 'error' as FileStatus,
+            error: fileData.error,
+            base64: '',
+            mimeType: fileData.mimeType,
+          };
+        }
+
+        const fileId = hashBase64(fileData.base64);
 
         const response = await fetch('/api/ocr', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ base64Image: base64 }),
+          body: JSON.stringify({ base64Image: fileData.base64 }),
         });
 
         const data = await response.json();
 
         // Handle rate limit error specifically
         if (response.status === 429) {
-          addToast(data.details || "You've reached the daily limit of 40 receipts. Contact @nutlope on X/Twitter for higher limits.", 'warning', 10000); // Show for 10 seconds
+          addToast(data.details || "You've reached the daily limit of 40 receipts. Contact @nutlope on X/Twitter for higher limits.", 'warning', 10000);
           return {
             id: fileId,
-            name: file.name,
-            file,
+            name: fileData.fileName,
+            file: fileData.originalFile,
             status: 'error' as FileStatus,
             error: 'Rate limit exceeded',
-            base64,
-            mimeType,
+            base64: fileData.base64,
+            mimeType: fileData.mimeType,
           };
         }
 
         if (response.ok && data.receipts && data.receipts.length > 0) {
-          const receipt = data.receipts[0]; // Take first receipt if multiple
-          const receiptId = hashBase64(base64);
+          const receipt = data.receipts[0];
+          const receiptId = hashBase64(fileData.base64);
 
-          // Create thumbnail from the full image
-          const fullImageBase64 = `data:${mimeType};base64,${base64}`;
+          // Create thumbnail from the image
+          const fullImageBase64 = `data:${fileData.mimeType};base64,${fileData.base64}`;
           const thumbnail = await createThumbnail(fullImageBase64);
 
           return {
             id: fileId,
-            name: file.name,
-            file,
+            name: fileData.fileName,
+            file: fileData.originalFile,
             status: 'receipt' as FileStatus,
             receipt: {
               ...receipt,
               id: receiptId,
-              fileName: receipt.fileName || file.name,
+              fileName: receipt.fileName || fileData.fileName,
               date: normalizeDate(receipt.date),
               currency: (receipt.currency || 'USD').toUpperCase(),
               thumbnail,
-              base64: '', // Don't store full image to save space
-              mimeType,
+              base64: '',
+              mimeType: fileData.mimeType,
             },
-            base64,
-            mimeType,
-            rawReceipt: receipt, // Keep original for currency conversion
+            base64: fileData.base64,
+            mimeType: fileData.mimeType,
+            rawReceipt: receipt,
           };
         } else {
-          // No receipt data found
           return {
             id: fileId,
-            name: file.name,
-            file,
+            name: fileData.fileName,
+            file: fileData.originalFile,
             status: 'not-receipt' as FileStatus,
-            base64,
-            mimeType,
+            base64: fileData.base64,
+            mimeType: fileData.mimeType,
           };
         }
       } catch (error) {
         console.error('Error processing file:', error);
-        const { base64 } = await readFileAsBase64(file);
-        const fileId = hashBase64(base64);
+        const fileId = `error-${Date.now()}-${Math.random()}`;
         return {
           id: fileId,
-          name: file.name,
-          file,
+          name: fileData.fileName,
+          file: fileData.originalFile,
           status: 'error' as FileStatus,
           error: error instanceof Error ? error.message : 'Processing failed',
           base64: '',
-          mimeType: file.type,
+          mimeType: fileData.mimeType,
         };
       }
     });
@@ -297,7 +382,6 @@ export function useReceiptManager() {
         }
       } catch (error) {
         console.error('❌ Failed to convert currencies:', error);
-        // Keep original amounts if conversion fails
       }
     }
 
@@ -399,7 +483,7 @@ export function useReceiptManager() {
       const input = document.createElement('input');
       input.type = 'file';
       input.multiple = true;
-      input.accept = 'image/*';
+      input.accept = 'image/*,application/pdf';
 
       input.onchange = (e) => {
         const files = (e.target as HTMLInputElement).files;
