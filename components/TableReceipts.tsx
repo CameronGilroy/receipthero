@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Button } from "@/ui/button";
 import { Trash2 } from "lucide-react";
 import type { ProcessedReceipt } from "@/lib/types";
-import { formatDisplayDate, toTitleCase } from "@/lib/utils";
+import { formatDisplayDate, toTitleCase, formatCurrency, formatNumber } from "@/lib/utils";
 import ReceiptDetailsDialog from "./ReceiptDetailsDialog";
 
 interface TableReceiptsProps {
@@ -14,11 +14,12 @@ interface TableReceiptsProps {
 }
 
 function calculateTotals(receipts: ProcessedReceipt[]) {
-  const totalSpending = receipts.reduce(
+  // Calculate total in USD (internal calculation currency)
+  const totalSpendingUSD = receipts.reduce(
     (sum, receipt) => sum + receipt.amount,
     0
   );
-  return totalSpending;
+  return totalSpendingUSD;
 }
 
 export default function TableReceipts({
@@ -124,51 +125,57 @@ export default function TableReceipts({
               </tr>
             </thead>
             <tbody>
-              {sortedReceipts.map((receipt) => (
-                <tr
-                  key={receipt.id}
-                  className="border-b hover:bg-muted/25 text-base text-left text-[#1e2939] cursor-pointer"
-                  onClick={() => handleRowClick(receipt)}
-                >
-                  <td className="p-4">
-                    <img
-                      src={receipt.thumbnail || "/placeholder.svg"}
-                      alt="Receipt thumbnail"
-                      className="w-12 h-12 object-cover rounded border"
-                    />
-                  </td>
-                  <td className="p-4">{formatDisplayDate(receipt.date)}</td>
-                  <td className="p-4">{receipt.vendor}</td>
-                  <td className="p-4">{toTitleCase(receipt.category)}</td>
-                  <td className="p-4">{toTitleCase(receipt.paymentMethod)}</td>
-                  <td className="p-4">${receipt.taxAmount.toFixed(2)}</td>
-                  <td className="p-4 font-semibold">
-                    ${receipt.amount.toFixed(2)}
-                  </td>
-                  <td className="p-4">
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onDeleteReceipt(receipt.id);
-                        }}
-                        className="text-destructive hover:text-destructive"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {sortedReceipts.map((receipt) => {
+                // Use original amounts if available (for non-USD receipts), otherwise use converted amounts
+                const displayAmount = receipt.originalAmount ?? receipt.amount;
+                const displayTaxAmount = receipt.originalTaxAmount ?? receipt.taxAmount;
+
+                return (
+                  <tr
+                    key={receipt.id}
+                    className="border-b hover:bg-muted/25 text-base text-left text-[#1e2939] cursor-pointer"
+                    onClick={() => handleRowClick(receipt)}
+                  >
+                    <td className="p-4">
+                      <img
+                        src={receipt.thumbnail || "/placeholder.svg"}
+                        alt="Receipt thumbnail"
+                        className="w-12 h-12 object-cover rounded border"
+                      />
+                    </td>
+                    <td className="p-4">{formatDisplayDate(receipt.date)}</td>
+                    <td className="p-4">{receipt.vendor}</td>
+                    <td className="p-4">{toTitleCase(receipt.category)}</td>
+                    <td className="p-4">{toTitleCase(receipt.paymentMethod)}</td>
+                    <td className="p-4">{formatCurrency(displayTaxAmount, receipt.currency || 'USD')}</td>
+                    <td className="p-4 font-semibold">
+                      {formatCurrency(displayAmount, receipt.currency || 'USD')}
+                    </td>
+                    <td className="p-4">
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDeleteReceipt(receipt.id);
+                          }}
+                          className="text-destructive hover:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
             <tfoot className="bg-primary text-primary-foreground">
               <tr>
                 <td colSpan={7} className="p-4 font-semibold">
                   Total:
                 </td>
-                <td className="p-4 font-bold">${totalSpending.toFixed(2)}</td>
+                <td className="p-4 font-bold">${formatNumber(totalSpending)}</td>
               </tr>
             </tfoot>
           </table>

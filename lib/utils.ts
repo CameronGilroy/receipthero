@@ -112,3 +112,31 @@ export function toTitleCase(str: string): string {
   if (!str) return str;
   return str.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase());
 }
+
+/**
+ * Formats a number with comma separators for thousands
+ * @param num - Number to format
+ * @param decimals - Number of decimal places (default: 2)
+ * @returns Formatted number string like "1,419.77"
+ */
+export function formatNumber(num: number, decimals: number = 2): string {
+  return num.toLocaleString('en-US', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+}
+
+/**
+ * Formats currency amount with proper separators and symbol
+ * @param amount - The amount to format
+ * @param currency - The currency code (e.g., 'USD', 'AUD', 'EUR')
+ * @param decimals - Number of decimal places (default: 2)
+ * @returns Formatted currency string like "$1,419.77" or "2,200.00 AUD"
+ */
+export function formatCurrency(amount: number, currency: string, decimals: number = 2): string {
+  const symbol = currency === 'USD' ? '$' : '';
+  const currencySuffix = currency !== 'USD' ? ` ${currency}` : '';
+  const formattedAmount = formatNumber(amount, decimals);
+
+  return `${symbol}${formattedAmount}${currencySuffix}`;
+}
