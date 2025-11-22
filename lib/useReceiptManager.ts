@@ -6,9 +6,9 @@ import { useToast } from '@/ui/toast';
 import * as pdfjsLib from 'pdfjs-dist';
 
 // Configure PDF.js worker
-// Using CDN for worker file - falls back to bundled worker if unavailable
+// Using local worker file from public directory for security
 if (typeof window !== 'undefined') {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+  pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 }
 
 interface StoredData {
