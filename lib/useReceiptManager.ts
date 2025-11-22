@@ -38,8 +38,11 @@ const convertPdfToImage = async (file: File): Promise<{ base64: string; mimeType
     
     // Create canvas
     const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
+    if (!canvas) {
+      throw new Error('Canvas not supported in this environment');
+    }
     
+    const context = canvas.getContext('2d');
     if (!context) {
       throw new Error('Could not get canvas context');
     }
@@ -55,7 +58,7 @@ const convertPdfToImage = async (file: File): Promise<{ base64: string; mimeType
     
     // Convert canvas to base64 JPEG
     const imageDataUrl = canvas.toDataURL('image/jpeg', 0.95);
-    const [, base64] = imageDataUrl.split(',');
+    const base64 = imageDataUrl.split(',')[1]; // Get base64 part after the data URL prefix
     
     return { base64, mimeType: 'image/jpeg' };
   } catch (error) {
