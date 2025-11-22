@@ -292,8 +292,8 @@ export function useReceiptManager() {
 
     // Clean up rawReceipt data
     for (const result of results) {
-      if (result.rawReceipt) {
-        delete result.rawReceipt;
+      if ('rawReceipt' in result) {
+        delete (result as any).rawReceipt;
       }
     }
 
