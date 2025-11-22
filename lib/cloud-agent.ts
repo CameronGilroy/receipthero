@@ -16,12 +16,6 @@ export interface CloudAgentResponse {
   receipts: ProcessedReceipt[];
 }
 
-export interface CloudAgentError {
-  error: string;
-  details?: string;
-  statusCode?: number;
-}
-
 /**
  * Custom error class for cloud agent errors
  */
