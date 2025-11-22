@@ -5,9 +5,10 @@ import { getMultipleUSDConversionRates } from './currency';
 import { useToast } from '@/ui/toast';
 import * as pdfjsLib from 'pdfjs-dist';
 
-// Set up PDF.js worker
+// Configure PDF.js worker
+// Using local worker file from public directory for security
 if (typeof window !== 'undefined') {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+  pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 }
 
 interface StoredData {
@@ -16,8 +17,63 @@ interface StoredData {
 }
 
 const STORAGE_KEY = 'receipt-hero-data';
+const PDF_RENDER_SCALE = 2; // Scale factor for PDF rendering quality
 
-const readFileAsBase64 = (file: File): Promise<{ base64: string; mimeType: string }> => {
+// Convert PDF first page to base64 image
+const convertPdfToImage = async (file: File): Promise<{ base64: string; mimeType: string }> => {
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    
+    // Check if PDF has pages
+    if (pdf.numPages === 0) {
+      throw new Error('PDF has no pages');
+    }
+    
+    // Get the first page
+    const page = await pdf.getPage(1);
+    
+    // Set scale for better quality
+    const viewport = page.getViewport({ scale: PDF_RENDER_SCALE });
+    
+    // Create canvas
+    const canvas = document.createElement('canvas');
+    if (!canvas) {
+      throw new Error('Canvas not supported in this environment');
+    }
+    
+    const context = canvas.getContext('2d');
+    if (!context) {
+      throw new Error('Could not get canvas context');
+    }
+    
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    
+    // Render PDF page to canvas
+    await page.render({
+      canvasContext: context,
+      viewport: viewport,
+    }).promise;
+    
+    // Convert canvas to base64 JPEG
+    const imageDataUrl = canvas.toDataURL('image/jpeg', 0.95);
+    const base64 = imageDataUrl.split(',')[1]; // Get base64 part after the data URL prefix
+    
+    return { base64, mimeType: 'image/jpeg' };
+  } catch (error) {
+    console.error('Error converting PDF to image:', error);
+    throw new Error(`Failed to process PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+};
+
+const readFileAsBase64 = async (file: File): Promise<{ base64: string; mimeType: string }> => {
+  // Handle PDF files separately
+  if (file.type === 'application/pdf') {
+    return convertPdfToImage(file);
+  }
+  
+  // Handle image files as before
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
