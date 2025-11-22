@@ -177,8 +177,17 @@ export function useReceiptManager() {
     };
   }, []);
 
+  // Type for the raw receipt data returned by the OCR API
+  type RawReceipt = {
+    id?: string;
+    fileName?: string;
+    date?: string;
+    currency?: string;
+    [key: string]: unknown; // Allow extra properties, as structure may vary
+  };
+
   // Internal type for processing with temporary rawReceipt data
-  type ProcessingUploadedFile = UploadedFile & { rawReceipt?: any };
+  type ProcessingUploadedFile = UploadedFile & { rawReceipt?: RawReceipt };
 
   // Process files through OCR API (parallel processing)
   const processFiles = useCallback(async (files: File[]): Promise<UploadedFile[]> => {
