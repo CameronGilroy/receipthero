@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ProcessedReceipt, StoredReceipt, SpendingBreakdown, UploadedFile, FileStatus, ExportConfig } from './types';
+import { ProcessedReceipt, StoredReceipt, SpendingBreakdown, UploadedFile, FileStatus, ExportConfig, XeroAccount } from './types';
 import { normalizeDate } from './utils';
 import { getMultipleUSDConversionRates } from './currency';
 import { useToast } from '@/ui/toast';
-import { generateXeroCSV, validateXeroExportData } from './csvExport';
+import { generateXeroCSV, validateXeroExportData, extractXeroFieldsFromReceipt } from './csvExport';
+import { XeroStorageManager } from './xero-storage';
 
 // Dynamic PDF.js import to prevent SSR issues
 let pdfjsLib: typeof import('pdfjs-dist') | null = null;
@@ -613,6 +614,112 @@ export function useReceiptManager() {
     }
   }, [receipts, addToast]);
 
+  // Xero Integration Functions
+
+  // Check if user is authenticated with Xero
+  const isXeroAuthenticated = useCallback((): boolean => {
+    return XeroStorageManager.isAuthenticated();
+  }, []);
+
+  // Get Xero tenant information
+  const getXeroTenantInfo = useCallback(() => {
+    return XeroStorageManager.getTenantInfo();
+  }, []);
+
+  // Connect to Xero (redirect to OAuth2 flow)
+  const connectToXero = useCallback(async (): Promise<void> => {
+    try {
+      const authUrl = `/api/xero/auth`;
+      window.location.href = authUrl;
+    } catch (error) {
+      console.error('Failed to connect to Xero:', error);
+      addToast('Failed to connect to Xero', 'error');
+    }
+  }, [addToast]);
+
+  // Disconnect from Xero
+  const disconnectFromXero = useCallback(async (): Promise<void> => {
+    try {
+      await fetch('/api/xero/auth', { method: 'DELETE' });
+      XeroStorageManager.clearConnection();
+      addToast('Disconnected from Xero', 'success');
+    } catch (error) {
+      console.error('Failed to disconnect from Xero:', error);
+      addToast('Failed to disconnect from Xero', 'error');
+    }
+  }, [addToast]);
+
+  // Fetch Xero accounts
+  const fetchXeroAccounts = useCallback(async (refresh = false): Promise<XeroAccount[]> => {
+    try {
+      const response = await fetch(`/api/xero/accounts?refresh=${refresh}`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch accounts: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data.accounts || [];
+    } catch (error) {
+      console.error('Failed to fetch Xero accounts:', error);
+      addToast('Failed to fetch Xero accounts', 'error');
+      return [];
+    }
+  }, [addToast]);
+
+  // Enhanced export with Xero integration
+  const exportReceiptsToXero = useCallback(async (): Promise<void> => {
+    if (receipts.length === 0) {
+      addToast("No receipts to export", "warning");
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      // Enhance receipts with AI-powered account matching
+      const enhancedReceipts = await Promise.all(
+        receipts.map(async (receipt) => ({
+          ...receipt,
+          ...(await extractXeroFieldsFromReceipt(receipt))
+        }))
+      );
+
+      // Validate export data with enhanced receipts
+      const exportConfig = validateXeroExportData(enhancedReceipts);
+
+      if (exportConfig.exportReady) {
+        // Generate and download CSV
+        const csvContent = generateXeroCSV(enhancedReceipts, exportConfig);
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        if (link.download !== undefined) {
+          const url = URL.createObjectURL(blob);
+          link.setAttribute('href', url);
+          link.setAttribute('download', `receipts-export-${new Date().toISOString().split('T')[0]}.csv`);
+          link.style.visibility = 'hidden';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+
+          addToast(`Successfully exported ${receipts.length} receipts to Xero CSV`, "success");
+        }
+      } else {
+        addToast("Some receipts are missing required information for export. Enhanced data extraction has been applied.", "warning");
+        console.log('Export config:', exportConfig);
+        // Dialog will be shown by parent component
+      }
+    } catch (error) {
+      console.error('Failed to export receipts:', error);
+      addToast("Failed to export receipts to Xero CSV", "error");
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [receipts, addToast]);
+
   // Get files from file input
   const selectFiles = useCallback((): Promise<File[]> => {
     return new Promise((resolve) => {
@@ -646,5 +753,13 @@ export function useReceiptManager() {
     selectFiles,
     startProcessing,
     exportReceiptsToCSV,
+
+    // Xero Integration
+    isXeroAuthenticated,
+    getXeroTenantInfo,
+    connectToXero,
+    disconnectFromXero,
+    fetchXeroAccounts,
+    exportReceiptsToXero,
   };
 }

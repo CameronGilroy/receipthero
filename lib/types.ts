@@ -156,3 +156,61 @@ export interface ExportFormData {
   poPostalCode: string;
   poCountry: string;
 }
+
+// Xero API Integration Types
+
+// Xero Account object structure (from Xero API)
+export interface XeroAccount {
+  AccountID: string;
+  Code: string; // Account code (e.g., "410", "421")
+  Name: string;
+  Type: "REVENUE" | "EXPENSE" | "ASSET" | "LIABILITY" | "EQUITY";
+  TaxType: string;
+  EnablePaymentsToAccount: boolean;
+  ShowInExpenseClaims: boolean;
+  Class: "ASSET" | "EQUITY" | "EXPENSE" | "LIABILITY" | "REVENUE";
+  Status: "ACTIVE" | "ARCHIVED";
+  HasAttachments: boolean;
+  Description?: string;
+  BankAccountNumber?: string;
+  BankAccountType?: string;
+  CurrencyCode?: string;
+  ReportingCode?: string;
+  ReportingCodeName?: string;
+}
+
+// Xero API response wrapper for accounts
+export interface XeroAccountsResponse {
+  Accounts: XeroAccount[];
+  Pagination?: {
+    page: number;
+    pageSize: number;
+    pageCount: number;
+    totalCount: number;
+  };
+}
+
+// User Xero connection data
+export interface XeroConnection {
+  tenantId: string;
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+  tenantName: string;
+}
+
+// AI matching result
+export interface AccountMatch {
+  xeroAccount: XeroAccount;
+  confidence: number;
+  reasoning: string;
+  alternatives?: XeroAccount[];
+}
+
+// Caching for accounts to avoid excessive API calls
+export interface CachedAccounts {
+  accounts: XeroAccount[];
+  lastFetched: number;
+  tenantId: string;
+  expiresAt: number; // Cache expiry time
+}

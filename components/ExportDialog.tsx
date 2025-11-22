@@ -3,8 +3,11 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ProcessedReceipt, ExportFormData } from "@/lib/types";
-import { generateXeroCSV, validateXeroExportData } from "@/lib/csvExport";
+import { ProcessedReceipt, ExportFormData, XeroAccount } from "@/lib/types";
+import { generateXeroCSV, validateXeroExportData, extractXeroFieldsFromReceipt } from "@/lib/csvExport";
+import { XeroStorageManager } from "@/lib/xero-storage";
+import { XeroAccountDropdown } from "./XeroAccountSelector";
+import { useReceiptManager } from "@/lib/useReceiptManager";
 
 interface ExportDialogProps {
   receipts: ProcessedReceipt[];
@@ -14,74 +17,63 @@ interface ExportDialogProps {
 }
 
 export default function ExportDialog({ receipts, isOpen, onClose, onExport }: ExportDialogProps) {
-  const [formData, setFormData] = useState<ExportFormData>({
-    invoiceNumber: '',
-    contactEmail: '',
-    dueDate: '',
-    accountCode: '',
-    taxType: '',
-    poAddressLine1: '',
-    poAddressLine2: '',
-    poCity: '',
-    poRegion: '',
-    poPostalCode: '',
-    poCountry: '',
-  });
-
   const [isExporting, setIsExporting] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [isConnectedToXero, setIsConnectedToXero] = useState(false);
+  const [xeroTenantInfo, setXeroTenantInfo] = useState<{ tenantId: string; tenantName: string } | null>(null);
+  const [showForm, setShowForm] = useState(false);
 
-  // Reset form data when dialog opens
+  const {
+    isXeroAuthenticated,
+    getXeroTenantInfo,
+    connectToXero,
+    exportReceiptsToXero
+  } = useReceiptManager();
+
+  // Check Xero connection status when dialog opens
   useEffect(() => {
     if (isOpen) {
-      setFormData({
-        invoiceNumber: '',
-        contactEmail: '',
-        dueDate: '',
-        accountCode: '',
-        taxType: '',
-        poAddressLine1: '',
-        poAddressLine2: '',
-        poCity: '',
-        poRegion: '',
-        poPostalCode: '',
-        poCountry: '',
-      });
-    }
-  }, [isOpen]);
+      const connected = isXeroAuthenticated();
+      setIsConnectedToXero(connected);
 
-  const handleInputChange = (field: keyof ExportFormData, value: string) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value,
-    }));
+      if (connected) {
+        const tenantInfo = getXeroTenantInfo();
+        setXeroTenantInfo(tenantInfo);
+        setShowForm(true);
+      } else {
+        setShowForm(false);
+        setXeroTenantInfo(null);
+      }
+    }
+  }, [isOpen, isXeroAuthenticated, getXeroTenantInfo]);
+
+  const handleConnectToXero = async () => {
+    setIsConnecting(true);
+    try {
+      await connectToXero();
+      // Page will redirect to Xero, then back to complete export
+    } catch (error) {
+      console.error('Failed to connect to Xero:', error);
+    } finally {
+      setIsConnecting(false);
+    }
   };
 
   const handleExport = async () => {
     setIsExporting(true);
 
     try {
-      // Create enhanced receipts with user-provided defaults
-      const enhancedReceipts = receipts.map(receipt => ({
-        ...receipt,
-        invoiceNumber: receipt.invoiceNumber || formData.invoiceNumber || `RCP-${receipt.id.slice(-8).toUpperCase()}`,
-        contactEmail: receipt.contactEmail || formData.contactEmail,
-        dueDate: receipt.dueDate || formData.dueDate || receipt.date,
-        accountCode: receipt.accountCode || formData.accountCode,
-        taxType: receipt.taxType || formData.taxType,
-        poAddressLine1: receipt.poAddressLine1 || formData.poAddressLine1,
-        poAddressLine2: receipt.poAddressLine2 || formData.poAddressLine2,
-        poCity: receipt.poCity || formData.poCity,
-        poRegion: receipt.poRegion || formData.poRegion,
-        poPostalCode: receipt.poPostalCode || formData.poPostalCode,
-        poCountry: receipt.poCountry || formData.poCountry,
-      }));
-
-      // Validate and generate CSV
-      const exportConfig = validateXeroExportData(enhancedReceipts);
-      const csvContent = generateXeroCSV(enhancedReceipts, exportConfig);
-
-      onExport(csvContent);
-      onClose();
+      if (isConnectedToXero) {
+        // Use enhanced Xero export with AI matching
+        await exportReceiptsToXero();
+        onClose();
+      } else {
+        // Fallback to basic export if not connected
+        const exportConfig = validateXeroExportData(receipts);
+        const csvContent = generateXeroCSV(receipts, exportConfig);
+        onExport(csvContent);
+        onClose();
+      }
     } catch (error) {
       console.error('Export failed:', error);
     } finally {
@@ -101,141 +93,117 @@ export default function ExportDialog({ receipts, isOpen, onClose, onExport }: Ex
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>Complete Missing Export Information</DialogTitle>
+          <DialogTitle>
+            {isConnectedToXero ? 'Export to Xero with AI Matching' : 'Connect to Xero'}
+          </DialogTitle>
           <DialogDescription>
-            {missingCount} of {receipts.length} receipts need additional information to export to Xero CSV format.
-            Enter default values below for any missing fields.
+            {isConnectedToXero
+              ? `AI will automatically match your ${receipts.length} receipts to the most appropriate Xero account codes.`
+              : 'Connect your Xero account to enable intelligent account code matching and automatic data extraction.'
+            }
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-4 py-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm font-medium text-gray-700">Default Invoice Prefix</label>
-              <input
-                type="text"
-                placeholder="RCP-"
-                value={formData.invoiceNumber}
-                onChange={(e) => handleInputChange('invoiceNumber', e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700">Contact Email</label>
-              <input
-                type="email"
-                placeholder="contact@example.com"
-                value={formData.contactEmail}
-                onChange={(e) => handleInputChange('contactEmail', e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-          </div>
+        <div className="py-6">
+          {!isConnectedToXero ? (
+            // Not connected to Xero - show connection prompt
+            <div className="text-center space-y-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h3 className="text-lg font-medium text-blue-900 mb-2">
+                  🚀 Unlock AI-Powered Export
+                </h3>
+                <ul className="text-sm text-blue-800 text-left space-y-1">
+                  <li>• AI automatically matches receipt categories to Xero account codes</li>
+                  <li>• Smart extraction of invoice numbers, emails, and addresses</li>
+                  <li>• No manual account code entry required</li>
+                  <li>• Higher accuracy and faster processing</li>
+                </ul>
+              </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm font-medium text-gray-700">Default Due Date</label>
-              <input
-                type="date"
-                value={formData.dueDate}
-                onChange={(e) => handleInputChange('dueDate', e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700">Account Code</label>
-              <input
-                type="text"
-                placeholder="410"
-                value={formData.accountCode}
-                onChange={(e) => handleInputChange('accountCode', e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-          </div>
+              <Button
+                onClick={handleConnectToXero}
+                disabled={isConnecting}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                size="lg"
+              >
+                {isConnecting ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Connecting to Xero...
+                  </>
+                ) : (
+                  <>
+                    🔗 Connect Xero Account
+                  </>
+                )}
+              </Button>
 
-          <div>
-            <label className="text-sm font-medium text-gray-700">Tax Type</label>
-            <select
-              value={formData.taxType}
-              onChange={(e) => handleInputChange('taxType', e.target.value)}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="">Select tax type...</option>
-              <option value="GST">GST</option>
-              <option value="VAT">VAT</option>
-              <option value="EXEMPT">Tax Exempt</option>
-              <option value="NONE">No Tax</option>
-            </select>
-          </div>
-
-          <div className="space-y-3">
-            <h4 className="text-sm font-medium text-gray-700">Purchase Order Address (Optional)</h4>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm text-gray-600">Address Line 1</label>
-                <input
-                  type="text"
-                  value={formData.poAddressLine1}
-                  onChange={(e) => handleInputChange('poAddressLine1', e.target.value)}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-              <div>
-                <label className="text-sm text-gray-600">City</label>
-                <input
-                  type="text"
-                  value={formData.poCity}
-                  onChange={(e) => handleInputChange('poCity', e.target.value)}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
+              <div className="text-center">
+                <button
+                  onClick={() => setShowForm(true)}
+                  className="text-sm text-blue-600 hover:text-blue-800 underline"
+                >
+                  Continue with manual export instead
+                </button>
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <label className="text-sm text-gray-600">Region</label>
-                <input
-                  type="text"
-                  value={formData.poRegion}
-                  onChange={(e) => handleInputChange('poRegion', e.target.value)}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
+          ) : (
+            // Connected to Xero - show export options
+            <div className="space-y-4">
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <div className="flex items-center space-x-2">
+                  <span className="text-green-600">✓</span>
+                  <span className="text-green-800 font-medium">
+                    Connected to {xeroTenantInfo?.tenantName || 'Xero'}
+                  </span>
+                </div>
+                <p className="text-sm text-green-700 mt-2">
+                  AI account matching and enhanced data extraction are active.
+                </p>
               </div>
-              <div>
-                <label className="text-sm text-gray-600">Postal Code</label>
-                <input
-                  type="text"
-                  value={formData.poPostalCode}
-                  onChange={(e) => handleInputChange('poPostalCode', e.target.value)}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-              <div>
-                <label className="text-sm text-gray-600">Country</label>
-                <input
-                  type="text"
-                  value={formData.poCountry}
-                  onChange={(e) => handleInputChange('poCountry', e.target.value)}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
+
+              <div className="border rounded-lg p-4">
+                <h4 className="font-medium text-gray-900 mb-2">Export Summary</h4>
+                <div className="text-sm text-gray-600 space-y-1">
+                  <div className="flex justify-between">
+                    <span>Total receipts:</span>
+                    <span className="font-medium">{receipts.length}</span>
+                  </div>
+                  {missingCount > 0 && (
+                    <div className="flex justify-between">
+                      <span>Need completion:</span>
+                      <span className="font-medium text-orange-600">{missingCount}</span>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
-          <div className="text-sm text-gray-600 bg-blue-50 p-3 rounded-md">
-            <strong>Note:</strong> These values will be applied as defaults for receipts missing this information.
-            Individual receipts with extracted data will use their specific values.
-          </div>
+          {isConnectedToXero && (
+            <div className="flex items-center justify-center space-x-4 pt-4 border-t">
+              <Button variant="outline" onClick={onClose} disabled={isExporting}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleExport}
+                disabled={isExporting}
+                className="bg-green-600 hover:bg-green-700 text-white"
+              >
+                {isExporting ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Processing with AI...
+                  </>
+                ) : (
+                  <>
+                    🤖 Export with AI Matching
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
         </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={isExporting}>
-            Cancel
-          </Button>
-          <Button onClick={handleExport} disabled={isExporting}>
-            {isExporting ? 'Exporting...' : `Export ${receipts.length} Receipts`}
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

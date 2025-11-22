@@ -157,12 +157,43 @@ export function generateXeroCSV(receipts: ProcessedReceipt[], config: ExportConf
 }
 
 /**
- * Attempts to extract additional Xero fields from receipt data
- * This is a placeholder for future AI-powered extraction logic
+ * Attempts to match receipt to Xero account using AI-powered semantic matching
+ */
+export async function matchReceiptToXeroAccount(receipt: ProcessedReceipt): Promise<string | null> {
+  try {
+    // Import Xero client dynamically to avoid circular dependencies
+    const { XeroStorageManager } = await import('./xero-storage');
+    const { AccountMatcher } = await import('./xero-account-matcher');
+
+    // Check if user is authenticated with Xero
+    if (!XeroStorageManager.isAuthenticated()) {
+      return null; // Fall back to default mapping
+    }
+
+    // Get available accounts
+    const accounts = XeroStorageManager.getCachedAccounts();
+    if (!accounts || accounts.length === 0) {
+      return null; // Fall back to default mapping
+    }
+
+    // Perform AI-powered matching
+    const match = await AccountMatcher.matchReceiptToAccount(
+      receipt.category,
+      accounts,
+      receipt.description || receipt.vendor
+    );
+
+    return match.xeroAccount.Code;
+  } catch (error) {
+    console.error('Error matching receipt to Xero account:', error);
+    return null; // Fall back to default mapping
+  }
+}
+
+/**
+ * Attempts to extract additional Xero fields from receipt data with AI-powered account matching
  */
 export async function extractXeroFieldsFromReceipt(receipt: ProcessedReceipt): Promise<Partial<XeroReceiptExport>> {
-  // For now, return the existing data
-  // Future: Use AI/ML to extract missing fields from receipt images
   const extracted: Partial<XeroReceiptExport> = {};
 
   // Apply intelligent defaults where possible
@@ -174,8 +205,15 @@ export async function extractXeroFieldsFromReceipt(receipt: ProcessedReceipt): P
     extracted.dueDate = receipt.date; // Same as invoice date
   }
 
+  // Try AI-powered account matching first, fall back to hardcoded mappings
   if (!receipt.accountCode) {
-    extracted.accountCode = CATEGORY_TO_ACCOUNT_CODE[receipt.category] || CATEGORY_TO_ACCOUNT_CODE.default;
+    const matchedAccountCode = await matchReceiptToXeroAccount(receipt);
+    if (matchedAccountCode) {
+      extracted.accountCode = matchedAccountCode;
+    } else {
+      // Fall back to hardcoded mappings
+      extracted.accountCode = CATEGORY_TO_ACCOUNT_CODE[receipt.category] || CATEGORY_TO_ACCOUNT_CODE.default;
+    }
   }
 
   if (!receipt.description) {

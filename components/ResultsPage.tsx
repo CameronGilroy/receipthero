@@ -35,6 +35,7 @@ export default function ResultsPage({
           processedReceipts={processedReceipts}
           onDeleteReceipt={onDeleteReceipt}
           onStartOver={onStartOver}
+          onExportToCSV={() => {}} // Handled by ExportDialog
         />
       </div>
 
