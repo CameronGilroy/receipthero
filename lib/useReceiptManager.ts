@@ -183,6 +183,8 @@ export function useReceiptManager() {
     fileName?: string;
     date?: string;
     currency?: string;
+    amount?: number;
+    taxAmount?: number;
     [key: string]: unknown; // Allow extra properties, as structure may vary
   };
 
@@ -303,10 +305,17 @@ export function useReceiptManager() {
     }
 
     // Clean up rawReceipt data and return as UploadedFile[]
-    return results.map(result => {
-      const { rawReceipt, ...uploadedFile } = result;
-      return uploadedFile;
-    });
+    // Explicitly map to UploadedFile properties only
+    return results.map(result => ({
+      id: result.id,
+      name: result.name,
+      file: result.file,
+      status: result.status,
+      receipt: result.receipt,
+      error: result.error,
+      base64: result.base64,
+      mimeType: result.mimeType,
+    }));
   }, []);
 
   // Add new receipts (used by upload page)
