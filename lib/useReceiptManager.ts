@@ -177,10 +177,13 @@ export function useReceiptManager() {
     };
   }, []);
 
+  // Internal type for processing with temporary rawReceipt data
+  type ProcessingUploadedFile = UploadedFile & { rawReceipt?: any };
+
   // Process files through OCR API (parallel processing)
   const processFiles = useCallback(async (files: File[]): Promise<UploadedFile[]> => {
     // First, process all files to get OCR data
-    const filePromises = files.map(async (file) => {
+    const filePromises = files.map(async (file): Promise<ProcessingUploadedFile> => {
       try {
         const { base64, mimeType } = await readFileAsBase64(file);
         const fileId = hashBase64(base64); // Use content-based ID
@@ -290,14 +293,11 @@ export function useReceiptManager() {
       }
     }
 
-    // Clean up rawReceipt data
-    for (const result of results) {
-      if ('rawReceipt' in result) {
-        delete (result as any).rawReceipt;
-      }
-    }
-
-    return results;
+    // Clean up rawReceipt data and return as UploadedFile[]
+    return results.map(result => {
+      const { rawReceipt, ...uploadedFile } = result;
+      return uploadedFile;
+    });
   }, []);
 
   // Add new receipts (used by upload page)

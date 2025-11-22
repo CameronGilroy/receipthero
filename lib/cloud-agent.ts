@@ -19,6 +19,21 @@ export interface CloudAgentResponse {
 export interface CloudAgentError {
   error: string;
   details?: string;
+  statusCode?: number;
+}
+
+/**
+ * Custom error class for cloud agent errors
+ */
+export class CloudAgentError extends Error {
+  constructor(
+    message: string,
+    public statusCode?: number,
+    public details?: string
+  ) {
+    super(message);
+    this.name = 'CloudAgentError';
+  }
 }
 
 /**
@@ -26,7 +41,7 @@ export interface CloudAgentError {
  * 
  * @param base64Image - Base64 encoded image data
  * @returns Processed receipt data from the cloud agent
- * @throws Error if cloud agent processing fails
+ * @throws CloudAgentError if cloud agent processing fails
  */
 export async function delegateToCloudAgent(
   base64Image: string
@@ -40,8 +55,11 @@ export async function delegateToCloudAgent(
   const data = await response.json();
 
   if (!response.ok) {
-    const error = data as CloudAgentError;
-    throw new Error(error.details || error.error || 'Cloud agent processing failed');
+    throw new CloudAgentError(
+      data.error || 'Cloud agent processing failed',
+      response.status,
+      data.details
+    );
   }
 
   return data as CloudAgentResponse;
@@ -51,8 +69,5 @@ export async function delegateToCloudAgent(
  * Check if an error is a rate limit error from the cloud agent
  */
 export function isRateLimitError(error: unknown): boolean {
-  if (error instanceof Error) {
-    return error.message.includes('Rate limit') || error.message.includes('429');
-  }
-  return false;
+  return error instanceof CloudAgentError && error.statusCode === 429;
 }
