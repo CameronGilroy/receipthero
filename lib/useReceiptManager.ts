@@ -3,6 +3,7 @@ import { ProcessedReceipt, StoredReceipt, SpendingBreakdown, UploadedFile, FileS
 import { normalizeDate } from './utils';
 import { getMultipleUSDConversionRates } from './currency';
 import { useToast } from '@/ui/toast';
+import { delegateToCloudAgent, isRateLimitError } from './cloud-agent';
 
 interface StoredData {
   receipts: StoredReceipt[];
@@ -184,29 +185,10 @@ export function useReceiptManager() {
         const { base64, mimeType } = await readFileAsBase64(file);
         const fileId = hashBase64(base64); // Use content-based ID
 
-        const response = await fetch('/api/ocr', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ base64Image: base64 }),
-        });
+        // Delegate OCR processing to cloud agent
+        const data = await delegateToCloudAgent(base64);
 
-        const data = await response.json();
-
-        // Handle rate limit error specifically
-        if (response.status === 429) {
-          addToast(data.details || "You've reached the daily limit of 40 receipts. Contact @nutlope on X/Twitter for higher limits.", 'warning', 10000); // Show for 10 seconds
-          return {
-            id: fileId,
-            name: file.name,
-            file,
-            status: 'error' as FileStatus,
-            error: 'Rate limit exceeded',
-            base64,
-            mimeType,
-          };
-        }
-
-        if (response.ok && data.receipts && data.receipts.length > 0) {
+        if (data.receipts && data.receipts.length > 0) {
           const receipt = data.receipts[0]; // Take first receipt if multiple
           const receiptId = hashBase64(base64);
 
@@ -248,6 +230,13 @@ export function useReceiptManager() {
         console.error('Error processing file:', error);
         const { base64 } = await readFileAsBase64(file);
         const fileId = hashBase64(base64);
+        
+        // Handle rate limit errors specially
+        if (isRateLimitError(error)) {
+          const errorMsg = error instanceof Error ? error.message : 'Rate limit exceeded';
+          addToast(errorMsg, 'warning', 10000);
+        }
+        
         return {
           id: fileId,
           name: file.name,
