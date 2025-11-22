@@ -5,6 +5,7 @@ import { Button } from "@/ui/button";
 import { Trash2, Download } from "lucide-react";
 import type { ProcessedReceipt } from "@/lib/types";
 import { formatDisplayDate, toTitleCase, formatCurrency, formatNumber } from "@/lib/utils";
+import { validateXeroExportData, generateXeroCSV } from "@/lib/csvExport";
 import ReceiptDetailsDialog from "./ReceiptDetailsDialog";
 import ExportDialog from "./ExportDialog";
 
@@ -123,6 +124,10 @@ export default function TableReceipts({
                   "Vendor",
                   "Category",
                   "Payment Method",
+                  "Invoice Number",
+                  "Account Code",
+                  "Description",
+                  "Quantity",
                   "Tax Amount",
                   "Amount",
                   "Actions",
@@ -159,6 +164,59 @@ export default function TableReceipts({
                     <td className="p-4">{receipt.vendor}</td>
                     <td className="p-4">{toTitleCase(receipt.category)}</td>
                     <td className="p-4">{toTitleCase(receipt.paymentMethod)}</td>
+                    <td className="p-4">
+                      <input
+                        type="text"
+                        placeholder="Auto-generated"
+                        value={receipt.invoiceNumber || `RCP-${receipt.id.slice(-8).toUpperCase()}`}
+                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => {
+                          // TODO: Implement invoice number update
+                          console.log('Invoice number changed:', e.target.value);
+                        }}
+                      />
+                    </td>
+                    <td className="p-4">
+                      <input
+                        type="text"
+                        placeholder="e.g. 410"
+                        value={receipt.accountCode || ''}
+                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => {
+                          // TODO: Implement account code update
+                          console.log('Account code changed:', e.target.value);
+                        }}
+                      />
+                    </td>
+                    <td className="p-4">
+                      <input
+                        type="text"
+                        placeholder="Description"
+                        value={receipt.description || `${toTitleCase(receipt.category)} - ${receipt.vendor}`}
+                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => {
+                          // TODO: Implement description update
+                          console.log('Description changed:', e.target.value);
+                        }}
+                      />
+                    </td>
+                    <td className="p-4">
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={receipt.quantity || 1}
+                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => {
+                          // TODO: Implement quantity update
+                          console.log('Quantity changed:', e.target.value);
+                        }}
+                      />
+                    </td>
                     <td className="p-4">{formatCurrency(displayTaxAmount, receipt.currency || 'USD')}</td>
                     <td className="p-4 font-semibold">
                       {formatCurrency(displayAmount, receipt.currency || 'USD')}
@@ -184,10 +242,11 @@ export default function TableReceipts({
             </tbody>
             <tfoot className="bg-primary text-primary-foreground">
               <tr>
-                <td colSpan={7} className="p-4 font-semibold">
+                <td colSpan={10} className="p-4 font-semibold">
                   Total:
                 </td>
                 <td className="p-4 font-bold">${formatNumber(totalSpending)}</td>
+                <td></td>
               </tr>
             </tfoot>
           </table>
@@ -199,7 +258,29 @@ export default function TableReceipts({
         isOpen={isDialogOpen}
         onClose={handleDialogClose}
         onDelete={onDeleteReceipt}
-        onExport={onExportToCSV}
+        onExport={(receiptId) => {
+          // Find the selected receipt and show export dialog for just this receipt
+          const receiptToExport = processedReceipts.find(r => r.id === receiptId);
+          if (receiptToExport) {
+            // Create a single-receipt export config
+            const exportConfig = validateXeroExportData([receiptToExport]);
+            const csvContent = generateXeroCSV([receiptToExport], exportConfig);
+
+            // Download directly
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            if (link.download !== undefined) {
+              const url = URL.createObjectURL(blob);
+              link.setAttribute('href', url);
+              link.setAttribute('download', `receipt-${receiptId.slice(-8).toUpperCase()}-${new Date().toISOString().split('T')[0]}.csv`);
+              link.style.visibility = 'hidden';
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+            }
+          }
+          setIsDialogOpen(false);
+        }}
       />
 
       <ExportDialog
