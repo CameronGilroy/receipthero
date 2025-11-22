@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ProcessedReceipt, StoredReceipt, SpendingBreakdown, UploadedFile, FileStatus } from './types';
+import { ProcessedReceipt, StoredReceipt, SpendingBreakdown, UploadedFile, FileStatus, ExportConfig } from './types';
 import { normalizeDate } from './utils';
 import { getMultipleUSDConversionRates } from './currency';
 import { useToast } from '@/ui/toast';
+import { generateXeroCSV, validateXeroExportData } from './csvExport';
 
 // Dynamic PDF.js import to prevent SSR issues
 let pdfjsLib: typeof import('pdfjs-dist') | null = null;
@@ -191,6 +192,28 @@ const toStoredReceipt = (receipt: ProcessedReceipt): StoredReceipt => ({
   originalTaxAmount: receipt.originalTaxAmount,
   exchangeRate: receipt.exchangeRate,
   mimeType: receipt.mimeType,
+  // Additional CSV export fields
+  invoiceNumber: receipt.invoiceNumber,
+  contactEmail: receipt.contactEmail,
+  dueDate: receipt.dueDate,
+  inventoryItemCode: receipt.inventoryItemCode,
+  description: receipt.description,
+  quantity: receipt.quantity,
+  unitAmount: receipt.unitAmount,
+  accountCode: receipt.accountCode,
+  taxType: receipt.taxType,
+  trackingName1: receipt.trackingName1,
+  trackingOption1: receipt.trackingOption1,
+  trackingName2: receipt.trackingName2,
+  trackingOption2: receipt.trackingOption2,
+  poAddressLine1: receipt.poAddressLine1,
+  poAddressLine2: receipt.poAddressLine2,
+  poAddressLine3: receipt.poAddressLine3,
+  poAddressLine4: receipt.poAddressLine4,
+  poCity: receipt.poCity,
+  poRegion: receipt.poRegion,
+  poPostalCode: receipt.poPostalCode,
+  poCountry: receipt.poCountry,
 });
 
 // Convert StoredReceipt to ProcessedReceipt (load thumbnail from separate storage)
@@ -549,6 +572,47 @@ export function useReceiptManager() {
 
 
 
+  // Export receipts to CSV format
+  const exportReceiptsToCSV = useCallback(async (): Promise<void> => {
+    if (receipts.length === 0) {
+      addToast("No receipts to export", "warning");
+      return;
+    }
+
+    try {
+      // Validate export data
+      const exportConfig = validateXeroExportData(receipts);
+
+      // If data is ready for export, generate and download CSV
+      if (exportConfig.exportReady) {
+        const csvContent = generateXeroCSV(receipts, exportConfig);
+
+        // Create download link
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        if (link.download !== undefined) {
+          const url = URL.createObjectURL(blob);
+          link.setAttribute('href', url);
+          link.setAttribute('download', `receipts-export-${new Date().toISOString().split('T')[0]}.csv`);
+          link.style.visibility = 'hidden';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+
+          addToast(`Successfully exported ${receipts.length} receipts to CSV`, "success");
+        }
+      } else {
+        // Show missing data dialog (to be implemented in next step)
+        addToast("Some receipts are missing required information for export", "warning");
+        console.log('Export config:', exportConfig);
+        // TODO: Show export dialog for missing data input
+      }
+    } catch (error) {
+      console.error('Failed to export receipts:', error);
+      addToast("Failed to export receipts to CSV", "error");
+    }
+  }, [receipts, addToast]);
+
   // Get files from file input
   const selectFiles = useCallback((): Promise<File[]> => {
     return new Promise((resolve) => {
@@ -581,5 +645,6 @@ export function useReceiptManager() {
     clearAll,
     selectFiles,
     startProcessing,
+    exportReceiptsToCSV,
   };
 }

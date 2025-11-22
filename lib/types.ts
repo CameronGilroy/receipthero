@@ -17,6 +17,28 @@ export const ProcessedReceiptSchema = z.object({
   thumbnail: z.string(),
   base64: z.string(),
   mimeType: z.string(),
+  // Additional fields for CSV export (optional)
+  invoiceNumber: z.string().optional(),
+  contactEmail: z.string().optional(),
+  dueDate: z.string().optional(),
+  inventoryItemCode: z.string().optional(),
+  description: z.string().optional(),
+  quantity: z.number().optional(),
+  unitAmount: z.number().optional(),
+  accountCode: z.string().optional(),
+  taxType: z.string().optional(),
+  trackingName1: z.string().optional(),
+  trackingOption1: z.string().optional(),
+  trackingName2: z.string().optional(),
+  trackingOption2: z.string().optional(),
+  poAddressLine1: z.string().optional(),
+  poAddressLine2: z.string().optional(),
+  poAddressLine3: z.string().optional(),
+  poAddressLine4: z.string().optional(),
+  poCity: z.string().optional(),
+  poRegion: z.string().optional(),
+  poPostalCode: z.string().optional(),
+  poCountry: z.string().optional(),
 });
 
 // Type exports
@@ -37,6 +59,28 @@ export interface StoredReceipt {
   originalTaxAmount?: number;
   exchangeRate?: number;
   mimeType: string;
+  // Additional fields for CSV export (optional)
+  invoiceNumber?: string;
+  contactEmail?: string;
+  dueDate?: string;
+  inventoryItemCode?: string;
+  description?: string;
+  quantity?: number;
+  unitAmount?: number;
+  accountCode?: string;
+  taxType?: string;
+  trackingName1?: string;
+  trackingOption1?: string;
+  trackingName2?: string;
+  trackingOption2?: string;
+  poAddressLine1?: string;
+  poAddressLine2?: string;
+  poAddressLine3?: string;
+  poAddressLine4?: string;
+  poCity?: string;
+  poRegion?: string;
+  poPostalCode?: string;
+  poCountry?: string;
 }
 
 // Status for uploaded files
@@ -62,4 +106,53 @@ export interface SpendingCategory {
 
 export interface SpendingBreakdown {
   categories: SpendingCategory[];
+}
+
+// Enhanced receipt with additional fields for CSV export
+export interface XeroReceiptExport extends ProcessedReceipt {
+  // Xero required fields
+  invoiceNumber?: string;
+  contactEmail?: string;
+  dueDate?: string;
+  inventoryItemCode?: string;
+  description?: string;
+  quantity?: number;
+  unitAmount?: number;
+  accountCode?: string;
+  taxType?: string;
+  trackingName1?: string;
+  trackingOption1?: string;
+  trackingName2?: string;
+  trackingOption2?: string;
+  // PO Address fields
+  poAddressLine1?: string;
+  poAddressLine2?: string;
+  poAddressLine3?: string;
+  poAddressLine4?: string;
+  poCity?: string;
+  poRegion?: string;
+  poPostalCode?: string;
+  poCountry?: string;
+}
+
+// Export configuration state
+export interface ExportConfig {
+  receipts: ProcessedReceipt[];
+  missingData: XeroReceiptExport[];
+  exportReady: boolean;
+}
+
+// Export form state for user input
+export interface ExportFormData {
+  invoiceNumber: string;
+  contactEmail: string;
+  dueDate: string;
+  accountCode: string;
+  taxType: string;
+  poAddressLine1: string;
+  poAddressLine2: string;
+  poCity: string;
+  poRegion: string;
+  poPostalCode: string;
+  poCountry: string;
 }

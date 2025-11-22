@@ -87,7 +87,22 @@ REQUIRED JSON STRUCTURE:
       "currency": "string (3-letter currency code)",
       "thumbnail": "string (empty string)",
       "base64": "string (empty string)",
-      "mimeType": "string (image/jpeg or image/png)"
+      "mimeType": "string (image/jpeg or image/png)",
+      "invoiceNumber": "string (optional invoice/receipt number)",
+      "contactEmail": "string (optional email address if visible)",
+      "dueDate": "string (optional due date in YYYY-MM-DD format)",
+      "inventoryItemCode": "string (optional item/service code)",
+      "description": "string (optional detailed item description)",
+      "quantity": "number (optional quantity, default 1)",
+      "unitAmount": "number (optional per-unit amount)",
+      "accountCode": "string (optional accounting code)",
+      "taxType": "string (optional tax rate/type like 'GST', 'VAT 20%', etc)",
+      "poAddressLine1": "string (optional purchase order address line 1)",
+      "poAddressLine2": "string (optional purchase order address line 2)",
+      "poCity": "string (optional city for PO address)",
+      "poRegion": "string (optional state/region for PO address)",
+      "poPostalCode": "string (optional postal code for PO address)",
+      "poCountry": "string (optional country for PO address)"
     }
   ]
 }
@@ -116,14 +131,27 @@ CATEGORIZATION RULES:
 
 PAYMENT METHODS: Common values include "cash", "credit", "debit", "check", "gift card", "digital wallet"
 
-Extract all visible receipt data accurately. If information is not visible, use reasonable defaults or omit if not applicable. Respond only with valid JSON matching the exact structure above.`,
+Extract all visible receipt data accurately. If information is not visible or cannot be determined confidently, omit the field entirely (do not use default values for optional fields). Respond only with valid JSON matching the exact structure above.
+
+ADDITIONAL CSV EXPORT FIELDS TO EXTRACT:
+- Invoice numbers, order numbers, or receipt reference numbers
+- Email addresses for the vendor or customer
+- Due dates, payment terms, or expiration dates
+- Item codes, SKU numbers, or product identifiers
+- Detailed item descriptions beyond just vendor names
+- Quantities for line items (if multiple items)
+- Unit prices or individual item costs
+- Account codes or department codes
+- Tax type information (GST, VAT, Sales Tax, etc.)
+- Business addresses, billing addresses, or shipping addresses
+- Look for terms like "Invoice #", "Order #", "Ref:", "PO:", "Due:", "Terms:", etc.`,
         },
         {
           role: 'user',
           content: [
             {
               type: 'text',
-              text: 'Extract receipt data from this image following the formatting and categorization rules.',
+              text: 'Extract receipt data from this image following the formatting and categorization rules. Look carefully for additional accounting and billing information that would be useful for CSV export to tools like Xero.',
             },
             {
               type: 'image_url',

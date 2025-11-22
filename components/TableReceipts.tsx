@@ -2,15 +2,17 @@
 
 import { useState } from "react";
 import { Button } from "@/ui/button";
-import { Trash2 } from "lucide-react";
+import { Trash2, Download } from "lucide-react";
 import type { ProcessedReceipt } from "@/lib/types";
 import { formatDisplayDate, toTitleCase, formatCurrency, formatNumber } from "@/lib/utils";
 import ReceiptDetailsDialog from "./ReceiptDetailsDialog";
+import ExportDialog from "./ExportDialog";
 
 interface TableReceiptsProps {
   processedReceipts: ProcessedReceipt[];
   onDeleteReceipt: (receiptId: string) => void;
   onStartOver: () => void;
+  onExportToCSV: () => void;
 }
 
 function calculateTotals(receipts: ProcessedReceipt[]) {
@@ -26,11 +28,13 @@ export default function TableReceipts({
   processedReceipts,
   onDeleteReceipt,
   onStartOver,
+  onExportToCSV,
 }: TableReceiptsProps) {
   const [selectedReceipt, setSelectedReceipt] =
     useState<ProcessedReceipt | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc"); // Default to newest first
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
 
   const totalSpending = calculateTotals(processedReceipts);
 
@@ -62,6 +66,14 @@ export default function TableReceipts({
           Your Overview:
         </h1>
         <div className="flex flex-row justify-start items-center gap-3">
+          <Button
+            variant="outline"
+            onClick={() => setIsExportDialogOpen(true)}
+            className="flex items-center gap-2"
+          >
+            <Download className="h-4 w-4" />
+            Export to CSV
+          </Button>
           <button
             className="flex justify-end items-center flex-grow-0 flex-shrink-0 relative overflow-hidden gap-2 px-[18px] py-[9px] rounded-md bg-white border border-[#d1d5dc] cursor-pointer"
             style={{ boxShadow: "0px 1px 7px -5px rgba(0,0,0,0.25)" }}
@@ -187,6 +199,28 @@ export default function TableReceipts({
         isOpen={isDialogOpen}
         onClose={handleDialogClose}
         onDelete={onDeleteReceipt}
+        onExport={onExportToCSV}
+      />
+
+      <ExportDialog
+        receipts={processedReceipts}
+        isOpen={isExportDialogOpen}
+        onClose={() => setIsExportDialogOpen(false)}
+        onExport={(csvContent) => {
+          // Handle the CSV export by triggering download
+          const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+          const link = document.createElement('a');
+          if (link.download !== undefined) {
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', `receipts-export-${new Date().toISOString().split('T')[0]}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          }
+          setIsExportDialogOpen(false);
+        }}
       />
     </main>
   );

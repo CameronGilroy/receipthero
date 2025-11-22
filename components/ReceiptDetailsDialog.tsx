@@ -2,7 +2,7 @@
 
 import { Dialog, DialogContent, DialogClose, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/ui/button";
-import { Trash2, X } from "lucide-react";
+import { Trash2, X, Download } from "lucide-react";
 import type { ProcessedReceipt } from "@/lib/types";
 import { formatDisplayDate, toTitleCase, formatCurrency } from "@/lib/utils";
 
@@ -11,6 +11,7 @@ interface ReceiptDetailsDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onDelete: (receiptId: string) => void;
+  onExport?: (receiptId: string) => void;
 }
 
 export default function ReceiptDetailsDialog({
@@ -18,6 +19,7 @@ export default function ReceiptDetailsDialog({
   isOpen,
   onClose,
   onDelete,
+  onExport,
 }: ReceiptDetailsDialogProps) {
   if (!receipt) return null;
 
@@ -88,8 +90,23 @@ export default function ReceiptDetailsDialog({
                </div>
             </div>
 
-            {/* Footer with Delete Button */}
-            <div className="flex justify-end items-center mt-auto">
+            {/* Footer with Export and Delete Buttons */}
+            <div className="flex justify-between items-center mt-auto gap-3">
+              <div className="flex gap-3">
+                {onExport && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      onExport(receipt.id);
+                      onClose();
+                    }}
+                    className="flex items-center gap-2"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span className="text-sm font-medium">Export</span>
+                  </Button>
+                )}
+              </div>
               <Button
                 onClick={() => {
                   onDelete(receipt.id);
