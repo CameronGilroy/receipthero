@@ -10,9 +10,11 @@ const redis = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN!,
 });
 
+const dailyLimit = parseInt(process.env.DAILY_RECEIPT_LIMIT || '30', 10);
+
 const ratelimit = new Ratelimit({
   redis,
-  limiter: Ratelimit.slidingWindow(30, '1 d'),
+  limiter: Ratelimit.slidingWindow(dailyLimit, '1 d'),
   analytics: true,
 });
 
@@ -27,7 +29,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // Rate limiting: 30 receipts per day per IP
+    // Rate limiting: configurable receipts per day per IP
     const ip =
       request.headers.get('x-forwarded-for')?.split(',')[0] ||
       request.headers.get('x-real-ip') ||
@@ -39,7 +41,7 @@ export async function POST(request: Request) {
         {
           error: 'Rate limit exceeded',
           details:
-            "You've reached the daily limit of 30 receipts. Contact @nutlope on X/Twitter for higher limits.",
+            `You've reached the daily limit of ${dailyLimit} receipts. Contact @nutlope on X/Twitter for higher limits.`,
         },
         { status: 429 }
       );
