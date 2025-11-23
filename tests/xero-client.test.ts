@@ -1,17 +1,14 @@
 import { XeroAPIClient } from '../lib/xero-client';
 import { XeroConnection } from '../lib/types';
 
+// Mock fetch globally
+global.fetch = jest.fn();
+
 // Mock XeroClient from xero-node
 jest.mock('xero-node', () => ({
   XeroClient: jest.fn().mockImplementation(() => ({
     initialize: jest.fn().mockResolvedValue(undefined),
     buildConsentUrl: jest.fn().mockResolvedValue('https://login.xero.com/authorize?client_id=338649194BB6453AA83DFAF701E3A611'),
-    apiCallback: jest.fn().mockResolvedValue({
-      access_token: 'mock_access_token',
-      refresh_token: 'mock_refresh_token',
-      expires_in: 1800,
-      token_type: 'Bearer'
-    }),
     updateTenants: jest.fn().mockResolvedValue(undefined),
     setTokenSet: jest.fn(),
     refreshToken: jest.fn().mockResolvedValue({
@@ -47,6 +44,14 @@ jest.mock('xero-node', () => ({
     }
   }))
 }));
+
+// Mock Xero token response
+const mockTokenResponse = {
+  access_token: 'mock_access_token',
+  refresh_token: 'mock_refresh_token',
+  expires_in: 1800,
+  token_type: 'Bearer'
+};
 
 describe('XeroAPIClient', () => {
   let client: XeroAPIClient;
@@ -96,6 +101,14 @@ describe('XeroAPIClient', () => {
 
   describe('exchangeCodeForTokens', () => {
     it('should exchange authorization code for tokens successfully', async () => {
+      // Mock successful fetch response for token exchange
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: async () => mockTokenResponse,
+      } as any);
+
       const code = 'mock_authorization_code';
       const connection = await client.exchangeCodeForTokens(code);
 
@@ -104,14 +117,29 @@ describe('XeroAPIClient', () => {
       expect(connection.refreshToken).toBe('mock_refresh_token');
       expect(connection.tenantId).toBe('mock_tenant_id');
       expect(connection.tenantName).toBe('Mock Organization');
+
+      // Verify fetch was called with correct parameters
+      expect(global.fetch).toHaveBeenCalledWith('https://identity.xero.com/connect/token', expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Authorization': expect.stringContaining('Basic'), // Check auth header format
+        }),
+        body: expect.any(URLSearchParams),
+      }));
     });
 
     it('should throw error if token exchange fails', async () => {
-      // Mock apiCallback to return empty token set
-      jest.mocked(client['client'].apiCallback).mockResolvedValueOnce(null as any);
+      // Mock failed response from Xero token endpoint
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        statusText: 'Bad Request',
+        text: async () => 'Invalid grant',
+      } as any);
 
       await expect(client.exchangeCodeForTokens('invalid_code')).rejects.toThrow(
-        'Xero authentication failed: Failed to obtain access tokens from Xero'
+        'Xero authentication failed: Xero token exchange failed: 400 Bad Request'
       );
     });
   });

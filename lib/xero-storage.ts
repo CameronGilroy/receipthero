@@ -5,23 +5,77 @@ export class XeroStorageManager {
   private static readonly ACCOUNTS_CACHE_KEY = 'xero-accounts-cache';
   private static readonly CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
 
+  // Server-side storage since localStorage is not available in API routes
+  private static readonly serverStorage = new Map<string, any>();
+
   /**
-   * Save Xero connection data securely to localStorage
+   * Check if we're running on the server (no window object)
+   */
+  private static isServer(): boolean {
+    return typeof window === 'undefined';
+  }
+
+  /**
+   * Get value from appropriate storage
+   */
+  private static getItem(key: string): string | null {
+    if (this.isServer()) {
+      return this.serverStorage.get(key) || null;
+    }
+    try {
+      return localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Set value in appropriate storage
+   */
+  private static setItem(key: string, value: string): void {
+    if (this.isServer()) {
+      this.serverStorage.set(key, value);
+      return;
+    }
+    try {
+      localStorage.setItem(key, value);
+    } catch {
+      // Silently fail on client-side storage errors
+    }
+  }
+
+  /**
+   * Remove value from appropriate storage
+   */
+  private static removeItem(key: string): void {
+    if (this.isServer()) {
+      this.serverStorage.delete(key);
+      return;
+    }
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      // Silently fail on client-side storage errors
+    }
+  }
+
+  /**
+   * Save Xero connection data
    */
   static saveConnection(connection: XeroConnection): void {
     try {
-      localStorage.setItem(this.CONNECTION_KEY, JSON.stringify(connection));
+      this.setItem(this.CONNECTION_KEY, JSON.stringify(connection));
     } catch (error) {
       console.error('Failed to save Xero connection:', error);
     }
   }
 
   /**
-   * Load Xero connection data from localStorage
+   * Load Xero connection data
    */
   static getConnection(): XeroConnection | null {
     try {
-      const stored = localStorage.getItem(this.CONNECTION_KEY);
+      const stored = this.getItem(this.CONNECTION_KEY);
       if (!stored) return null;
 
       const connection: XeroConnection = JSON.parse(stored);
@@ -45,7 +99,7 @@ export class XeroStorageManager {
    */
   static clearConnection(): void {
     try {
-      localStorage.removeItem(this.CONNECTION_KEY);
+      this.removeItem(this.CONNECTION_KEY);
       this.clearAccountsCache();
     } catch (error) {
       console.error('Failed to clear Xero connection:', error);
@@ -64,7 +118,7 @@ export class XeroStorageManager {
         expiresAt: Date.now() + this.CACHE_DURATION
       };
 
-      localStorage.setItem(this.ACCOUNTS_CACHE_KEY, JSON.stringify(cacheData));
+      this.setItem(this.ACCOUNTS_CACHE_KEY, JSON.stringify(cacheData));
     } catch (error) {
       console.error('Failed to save accounts cache:', error);
     }
@@ -75,7 +129,7 @@ export class XeroStorageManager {
    */
   static getCachedAccounts(tenantId?: string): XeroAccount[] | null {
     try {
-      const stored = localStorage.getItem(this.ACCOUNTS_CACHE_KEY);
+      const stored = this.getItem(this.ACCOUNTS_CACHE_KEY);
       if (!stored) return null;
 
       const cache: CachedAccounts = JSON.parse(stored);
@@ -104,7 +158,7 @@ export class XeroStorageManager {
    */
   static clearAccountsCache(): void {
     try {
-      localStorage.removeItem(this.ACCOUNTS_CACHE_KEY);
+      this.removeItem(this.ACCOUNTS_CACHE_KEY);
     } catch (error) {
       console.error('Failed to clear accounts cache:', error);
     }
@@ -123,7 +177,7 @@ export class XeroStorageManager {
    */
   static getCacheAge(tenantId: string): number | null {
     try {
-      const stored = localStorage.getItem(this.ACCOUNTS_CACHE_KEY);
+      const stored = this.getItem(this.ACCOUNTS_CACHE_KEY);
       if (!stored) return null;
 
       const cache: CachedAccounts = JSON.parse(stored);

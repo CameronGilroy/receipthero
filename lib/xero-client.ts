@@ -55,23 +55,55 @@ export class XeroAPIClient {
    */
   async exchangeCodeForTokens(code: string): Promise<XeroConnection> {
     try {
-      await this.client.initialize();
-      console.log('About to call apiCallback with code:', code.substring(0, 20) + '...');
-      await this.client.apiCallback(code);
-      console.log('apiCallback completed');
+      console.log('Exchange code for tokens via direct HTTP request');
 
-      // Access tokenSet from the client after callback
-      const tokenSet = (this.client as any).tokenSet;
-      console.log('Token set after callback:', {
-        hasTokenSet: !!tokenSet,
-        hasAccessToken: !!tokenSet?.access_token,
-        accessTokenPrefix: tokenSet?.access_token ? tokenSet.access_token.substring(0, 10) + '...' : 'undefined'
+      // Make direct HTTP request to Xero token endpoint
+      const baseUrl = process.env.NEXTAUTH_URL ||
+                     process.env.VERCEL_URL ?
+                     `https://${process.env.VERCEL_URL}` :
+                     'http://localhost:3000';
+
+      const redirectUri = `${baseUrl}/api/xero/auth`;
+
+      const tokenResponse = await fetch('https://identity.xero.com/connect/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Authorization': `Basic ${Buffer.from(`${process.env.XERO_CLIENT_ID}:${process.env.XERO_CLIENT_SECRET}`).toString('base64')}`
+        },
+        body: new URLSearchParams({
+          grant_type: 'authorization_code',
+          code: code,
+          redirect_uri: redirectUri
+        })
       });
 
-      if (!tokenSet?.access_token) {
+      if (!tokenResponse.ok) {
+        const errorText = await tokenResponse.text();
+        console.error('Xero token exchange failed:', {
+          status: tokenResponse.status,
+          statusText: tokenResponse.statusText,
+          error: errorText
+        });
+        throw new Error(`Xero token exchange failed: ${tokenResponse.status} ${tokenResponse.statusText}`);
+      }
+
+      const tokenSet = await tokenResponse.json();
+      console.log('Successfully received token set from Xero');
+
+      if (!tokenSet.access_token) {
         console.error('Token set missing access_token:', tokenSet);
         throw new Error('Failed to obtain access tokens from Xero');
       }
+
+      // Initialize client with the token set for tenant information
+      await this.client.initialize();
+      await this.client.setTokenSet({
+        access_token: tokenSet.access_token,
+        refresh_token: tokenSet.refresh_token,
+        token_type: 'Bearer',
+        expires_in: tokenSet.expires_in
+      });
 
       // Get tenant information using the new token
       await this.client.updateTenants(false);

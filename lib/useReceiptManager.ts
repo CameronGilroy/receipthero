@@ -12,8 +12,21 @@ let pdfjsLib: typeof import('pdfjs-dist') | null = null;
 // Configure PDF.js worker (only on client side)
 async function initializePdfJs() {
   if (typeof window !== 'undefined' && !pdfjsLib) {
-    pdfjsLib = await import('pdfjs-dist');
-    pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+    try {
+      // Use CDN-based loading for PDF.js
+      const pdfjsModule = await import('pdfjs-dist');
+      pdfjsLib = pdfjsModule;
+
+      if (pdfjsLib.GlobalWorkerOptions) {
+        // Configure the worker with the CDN path
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || '3.11.174'}/pdf.worker.min.js`;
+      }
+
+      console.log('PDF.js initialized successfully');
+    } catch (error) {
+      console.error('Failed to load PDF.js:', error);
+      pdfjsLib = null;
+    }
   }
   return pdfjsLib;
 }
@@ -148,7 +161,7 @@ const createThumbnail = (base64: string, maxWidth: number = 335, maxHeight: numb
 const convertPdfToImages = async (file: File): Promise<{ base64: string; mimeType: string }[]> => {
   const pdfjsLib = await initializePdfJs();
   if (!pdfjsLib) {
-    throw new Error('PDF.js could not be loaded');
+    throw new Error('PDF processing is currently disabled. Please upload image files instead or wait for PDF support to be restored.');
   }
   
   const arrayBuffer = await file.arrayBuffer();
